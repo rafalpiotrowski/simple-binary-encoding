@@ -177,6 +177,18 @@ public class SbeTool
     public static final String CSHARP_GENERATE_NAMESPACE_DIR = "sbe.csharp.generate.namespace.dir";
 
     /**
+     * Boolean system property to turn on or off generation of sealed classes during csharp code generation.
+     * Defaults to true
+     */
+    public static final String CSHARP_GENERATE_SEALED_CLASSES = "sbe.csharp.generate.sealed.classes";
+
+    /**
+     * System property to apply interface to class during csharp code generation.
+     * Defaults to empty string
+     */
+    public static final String CSHARP_GENERATE_MESSAGE_INTERFACE = "sbe.csharp.generate.message.interface";
+
+    /**
      * Specifies token that should be appended to keywords to avoid compilation errors.
      * <p>
      * If none is supplied then use of keywords results in an error during schema parsing. The
