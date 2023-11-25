@@ -15,69 +15,52 @@
  */
 package uk.co.real_logic.sbe.generation.ts;
 
-import org.agrona.collections.Object2NullableObjectHashMap;
-import org.agrona.collections.Object2ObjectHashMap;
-import org.agrona.generation.DynamicPackageOutputManager;
-import org.agrona.generation.PackageOutputManager;
+import org.agrona.generation.OutputManager;
+import org.agrona.Verify;
 
-import java.io.IOException;
-import java.io.Writer;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
+import static java.io.File.separatorChar;
+
 /**
- * Implementation of {@link DynamicPackageOutputManager} for TypeScript.
+ * Implementation of {@link OutputManager} for TypeScript.
  */
-public class TypeScriptOutputManager implements DynamicPackageOutputManager
+public class TypeScriptOutputManager implements OutputManager
 {
     private final File outputDir;
 
-    private final String baseDirName;
-    private final PackageOutputManager initialPackageOutputManager;
-    private PackageOutputManager actingPackageOutputManager;
-    private final Object2ObjectHashMap<String, PackageOutputManager> outputManagerByPackageName
-        = new Object2NullableObjectHashMap<>();
-
     /**
-     * Constructor.
+     * Create a new {@link OutputManager} for generating C# source
+     * files into a given package.
      *
-     * @param baseDirName the target directory
-     * @param packageName the initial package name
+     * @param baseDirName for the generated source code.
+     * @param packageName for the generated source code relative to the baseDirName.
      */
     public TypeScriptOutputManager(final String baseDirName, final String packageName)
     {
-        initialPackageOutputManager = new PackageOutputManager(baseDirName, packageName);
-        actingPackageOutputManager = initialPackageOutputManager;
-        this.baseDirName = baseDirName;
+        Verify.notNull(baseDirName, "baseDirName");
+        Verify.notNull(packageName, "packageName");
 
-        outputDir = new File(baseDirName);
+        final String dirName = baseDirName.endsWith("" + separatorChar) ? baseDirName : baseDirName + separatorChar;
+
+        outputDir = new File(dirName);
         if (!outputDir.exists() && !outputDir.mkdirs())
         {
-            throw new IllegalStateException("Unable to create directory: " + baseDirName);
+            throw new IllegalStateException("Unable to create directory: " + dirName);
         }
     }
 
     /**
-     * {@inheritDoc}
-     */
-    public void setPackageName(final String packageName)
-    {
-        actingPackageOutputManager = outputManagerByPackageName.get(packageName);
-        if (actingPackageOutputManager == null)
-        {
-            actingPackageOutputManager = new PackageOutputManager(baseDirName, packageName);
-            outputManagerByPackageName.put(packageName, actingPackageOutputManager);
-        }
-    }
-
-    private void resetPackage()
-    {
-        actingPackageOutputManager = initialPackageOutputManager;
-    }
-
-    /**
-     * {@inheritDoc}
+     * Create a new output which will be a TypeScript source file in the given package.
+     * <p>
+     * The {@link java.io.Writer} should be closed once the caller has finished with it. The Writer is
+     * buffered for efficient IO operations.
+     *
+     * @param name the name of the TypeScript class.
+     * @return a {@link java.io.Writer} to which the source code should be written.
+     * @throws IOException if an issue occurs when creating the file.
      */
     public Writer createOutput(final String name) throws IOException
     {

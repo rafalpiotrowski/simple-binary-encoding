@@ -19,7 +19,7 @@ package uk.co.real_logic.sbe.generation.ts;
 // import org.agrona.MutableDirectBuffer;
 import org.agrona.Strings;
 import org.agrona.Verify;
-import org.agrona.generation.DynamicPackageOutputManager;
+import org.agrona.generation.OutputManager;
 import org.agrona.sbe.*;
 import uk.co.real_logic.sbe.PrimitiveType;
 import uk.co.real_logic.sbe.generation.CodeGenerator;
@@ -36,20 +36,21 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
 
-// import static uk.co.real_logic.sbe.SbeTool.JAVA_INTERFACE_PACKAGE;
 import static uk.co.real_logic.sbe.generation.ts.TypeScriptGenerator.CodecType.DECODER;
 import static uk.co.real_logic.sbe.generation.ts.TypeScriptGenerator.CodecType.ENCODER;
 import static uk.co.real_logic.sbe.generation.ts.TypeScriptUtil.*;
 import static uk.co.real_logic.sbe.ir.GenerationUtil.*;
 
 /**
- * Generate codecs for the Java 8 programming language.
+ * Generate codecs for the TypeScript programming language.
  */
 @SuppressWarnings("MethodLength")
 public class TypeScriptGenerator implements CodeGenerator
 {
-    static final String MESSAGE_HEADER_ENCODER_TYPE = "MessageHeaderEncoder";
-    static final String MESSAGE_HEADER_DECODER_TYPE = "MessageHeaderDecoder";
+    static final String CODEC_IMPORT_PATH = "codecs.";
+
+    static final String MESSAGE_HEADER_ENCODER_TYPE = "codecs.MessageHeaderEncoder";
+    static final String MESSAGE_HEADER_DECODER_TYPE = "codecs.MessageHeaderDecoder";
 
     enum CodecType
     {
@@ -64,16 +65,21 @@ public class TypeScriptGenerator implements CodeGenerator
     private static final Set<String> PACKAGES_EMPTY_SET = Collections.emptySet();
 
     private final Ir ir;
-    private final DynamicPackageOutputManager outputManager;
-    private final String fqMutableBuffer;
+    private final OutputManager outputManager;
     private final String mutableBuffer;
-    private final String fqReadOnlyBuffer;
+    private final String fqMutableBuffer;
     private final String readOnlyBuffer;
-    private final boolean shouldGenerateGroupOrderAnnotation;
-    private final boolean shouldGenerateInterfaces;
-    private final boolean shouldDecodeUnknownEnumValues;
-    private final boolean shouldSupportTypesPackageNames;
+    private final String fqReadOnlyBuffer;
     private final Set<String> packageNameByTypes = new HashSet<>();
+
+    /**
+     * Should the generated code support generating interfaces for the types?
+     * if true Flyghweigh interfaces will be used instead of the concrete types.
+     */
+    private final boolean shouldGenerateInterfaces = false;
+    private final boolean shouldDecodeUnknownEnumValues = false;
+    private final boolean shouldSupportTypesPackageNames = true;
+    private final boolean shouldGenerateGroupOrderAnnotation = false;
 
     /**
      * Create a new TypeScript language {@link CodeGenerator}.
@@ -81,82 +87,19 @@ public class TypeScriptGenerator implements CodeGenerator
      * @param ir            for the messages and types.
      * @param outputManager for generating the codecs to.
      */
-    public TypeScriptGenerator(final Ir ir, final DynamicPackageOutputManager outputManager)
-    {
-        this(
-            ir,
-            "MutableDirectBuffer",
-            "DirectBuffer",
-            false,
-            false,
-            false,
-            outputManager);
-    }
-
-    /**
-     * Create a new Java language {@link CodeGenerator}. Generator support for types in their own package is disabled.
-     *
-     * @param ir                                 for the messages and types.
-     * @param mutableBuffer                      implementation used for mutating underlying buffers.
-     * @param readOnlyBuffer                     implementation used for reading underlying buffers.
-     * @param shouldGenerateGroupOrderAnnotation in the codecs.
-     * @param shouldGenerateInterfaces           for common methods.
-     * @param shouldDecodeUnknownEnumValues      generate support for unknown enum values when decoding.
-     * @param outputManager                      for generating the codecs to.
-     */
-    public TypeScriptGenerator(
-        final Ir ir,
-        final String mutableBuffer,
-        final String readOnlyBuffer,
-        final boolean shouldGenerateGroupOrderAnnotation,
-        final boolean shouldGenerateInterfaces,
-        final boolean shouldDecodeUnknownEnumValues,
-        final DynamicPackageOutputManager outputManager)
-    {
-        this(ir, mutableBuffer, readOnlyBuffer, shouldGenerateGroupOrderAnnotation, shouldGenerateInterfaces,
-            shouldDecodeUnknownEnumValues, false, outputManager);
-    }
-
-    /**
-     * Create a new Java language {@link CodeGenerator}.
-     *
-     * @param ir                                 for the messages and types.
-     * @param mutableBuffer                      implementation used for mutating underlying buffers.
-     * @param readOnlyBuffer                     implementation used for reading underlying buffers.
-     * @param shouldGenerateGroupOrderAnnotation in the codecs.
-     * @param shouldGenerateInterfaces           for common methods.
-     * @param shouldDecodeUnknownEnumValues      generate support for unknown enum values when decoding.
-     * @param shouldSupportTypesPackageNames     generator support for types in their own package.
-     * @param outputManager                      for generating the codecs to.
-     */
-    public TypeScriptGenerator(
-        final Ir ir,
-        final String mutableBuffer,
-        final String readOnlyBuffer,
-        final boolean shouldGenerateGroupOrderAnnotation,
-        final boolean shouldGenerateInterfaces,
-        final boolean shouldDecodeUnknownEnumValues,
-        final boolean shouldSupportTypesPackageNames,
-        final DynamicPackageOutputManager outputManager)
+    public TypeScriptGenerator(final Ir ir, final OutputManager outputManager)
     {
         Verify.notNull(ir, "ir");
         Verify.notNull(outputManager, "outputManager");
 
         this.ir = ir;
-        this.shouldSupportTypesPackageNames = shouldSupportTypesPackageNames;
         this.outputManager = outputManager;
 
-        // this.mutableBuffer = validateBufferImplementation(mutableBuffer, MutableDirectBuffer.class);
-        this.mutableBuffer = mutableBuffer;
+        this.mutableBuffer = "agrona.MutableDirectBuffer";
         this.fqMutableBuffer = mutableBuffer;
 
-        // this.readOnlyBuffer = validateBufferImplementation(readOnlyBuffer, DirectBuffer.class);
-        this.readOnlyBuffer = readOnlyBuffer;
+        this.readOnlyBuffer = "agrona.DirectBuffer";
         this.fqReadOnlyBuffer = readOnlyBuffer;
-
-        this.shouldGenerateGroupOrderAnnotation = shouldGenerateGroupOrderAnnotation;
-        this.shouldGenerateInterfaces = shouldGenerateInterfaces;
-        this.shouldDecodeUnknownEnumValues = shouldDecodeUnknownEnumValues;
     }
 
     /**
@@ -201,30 +144,6 @@ public class TypeScriptGenerator implements CodeGenerator
     }
 
     /**
-     * Register the types explicit package - if set and should be supported.
-     *
-     * @param token the 0-th token of the type.
-     * @param ir    the intermediate representation.
-     * @return the overridden package name of the type if set and supported, or {@link Ir#applicableNamespace()}.
-     */
-    private String registerTypesPackageName(final Token token, final Ir ir)
-    {
-        if (!shouldSupportTypesPackageNames)
-        {
-            return ir.applicableNamespace();
-        }
-
-        if (token.packageName() != null)
-        {
-            packageNameByTypes.add(token.packageName());
-            outputManager.setPackageName(token.packageName());
-            return token.packageName();
-        }
-
-        return ir.applicableNamespace();
-    }
-
-    /**
      * {@inheritDoc}
      */
     public void generate() throws IOException
@@ -253,6 +172,112 @@ public class TypeScriptGenerator implements CodeGenerator
             generateDecoder(msgToken, fields, groups, varData, hasVarData);
             generateEncoder(msgToken, fields, groups, varData, hasVarData);
         }
+
+        generateIndex();
+    }
+
+    private void generateIndex() throws IOException
+    {
+        try (Writer out = outputManager.createOutput("index"))
+        {
+            final Set<String> types = new HashSet<>();
+
+
+            final StringBuilder exportBuilder = new StringBuilder();
+            exportBuilder.append("export {\n");
+
+            for (final List<Token> tokens : ir.messages())
+            {
+                final Token msgToken = tokens.get(0);
+                final StringBuilder sb = new StringBuilder();
+                sb.append("import { ")
+                    .append(decoderName(msgToken.name()))
+                    .append(" } from './")
+                    .append(decoderName(msgToken.name()))
+                    .append(".g';\n");
+                sb.append("import { ")
+                    .append(encoderName(msgToken.name()))
+                    .append(" } from './")
+                    .append(encoderName(msgToken.name()))
+                    .append(".g';\n");
+
+                final List<Token> messageBody = getMessageBody(tokens);
+                int i = 0;
+
+                final List<Token> fields = new ArrayList<>();
+                i = collectFields(messageBody, i, fields);
+                for (final Token field : fields)
+                {
+                    if (field.signal() == Signal.BEGIN_COMPOSITE)
+                    {
+                        types.add(decoderName(field.name()));
+                        types.add(encoderName(field.name()));
+                    }
+                    if (field.signal() == Signal.BEGIN_ENUM)
+                    {
+                        out.append("import { ")
+                            .append(field.name())
+                            .append(", get" + field.name())
+                            .append(", get" + field.name() + "Value")
+                            .append(" } from './")
+                            .append(field.name())
+                            .append(".g';\n");
+                        exportBuilder.append("    ")
+                            .append(field.name())
+                            .append(", get" + field.name())
+                            .append(", get" + field.name() + "Value")
+                            .append(",\n");
+                    }
+                }
+                out.append(sb);
+
+                exportBuilder.append("    ").append(decoderName(msgToken.name())).append(",\n");
+                exportBuilder.append("    ").append(encoderName(msgToken.name())).append(",\n");
+            }
+
+            for (final String type : types)
+            {
+                out.append("import { ")
+                    .append(type)
+                    .append(" } from './")
+                    .append(type)
+                    .append(".g';\n");
+                exportBuilder.append("    ").append(type).append(",\n");
+            }
+
+            out.append("import { MetaAttribute } from './MetaAttribute.g';\n");
+            out.append("import { MessageHeaderDecoder } from './MessageHeaderDecoder.g';\n");
+            out.append("import { MessageHeaderEncoder } from './MessageHeaderEncoder.g';\n");
+            exportBuilder.append("    MetaAttribute,\n");
+            exportBuilder.append("    MessageHeaderDecoder,\n");
+            exportBuilder.append("    MessageHeaderEncoder,\n");
+
+            exportBuilder.append("}\n");
+            out.append(exportBuilder);
+        }
+    }
+
+    /**
+     * Register the types explicit package - if set and should be supported.
+     *
+     * @param token the 0-th token of the type.
+     * @param ir    the intermediate representation.
+     * @return the overridden package name of the type if set and supported, or {@link Ir#applicableNamespace()}.
+     */
+    private String registerTypesPackageName(final Token token, final Ir ir)
+    {
+        if (!shouldSupportTypesPackageNames)
+        {
+            return ir.applicableNamespace();
+        }
+
+        if (token.packageName() != null)
+        {
+            packageNameByTypes.add(token.packageName());
+            return token.packageName();
+        }
+
+        return ir.applicableNamespace();
     }
 
     private void generateEncoder(
@@ -270,10 +295,6 @@ public class TypeScriptGenerator implements CodeGenerator
         {
             out.append(generateMainHeader(ir.applicableNamespace(), ENCODER, hasVarData));
 
-            if (shouldGenerateGroupOrderAnnotation)
-            {
-                generateAnnotations(BASE_INDENT, className, groups, out, this::encoderName);
-            }
             out.append(generateDeclaration(className, implementsString, msgToken));
             out.append(generateEncoderFlyweightCode(className, msgToken));
 
@@ -803,7 +824,7 @@ public class TypeScriptGenerator implements CodeGenerator
             indent + "        return %2$s;\n" +
             indent + "    }\n",
             propertyName,
-            className,
+            CODEC_IMPORT_PATH + className,
             actingVersionGuard);
     }
 
@@ -838,7 +859,7 @@ public class TypeScriptGenerator implements CodeGenerator
         new Formatter(sb).format("\n" +
             indent + "    public %2$sCount(count: number): %1$s\n" +
             indent + "    {\n" +
-            indent + "        %2$s.wrap(buffer, count);\n" +
+            indent + "        %2$s.wrap(this._buffer, count);\n" +
             indent + "        return %2$s;\n" +
             indent + "    }\n",
             className,
@@ -1004,7 +1025,7 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "            return \"\";\n" +
                 indent + "        }\n\n" +
                 indent + "        let tmp: number[] = new number[dataLength];\n" +
-                indent + "        this._buffer.getBytes(limit + headerLength, tmp, 0, dataLength);\n\n" +
+                indent + "        this.buffer().getBytes(limit + headerLength, tmp, 0, dataLength);\n\n" +
                 indent + "        return new String(tmp, %6$s);\n" + //TODO: check if this is correct
                 indent + "    }\n",
                 formatPropertyName(propertyName),
@@ -1139,7 +1160,7 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "        let limit: number = this._parentMessage.getLimit();\n" +
                 indent + "        this._parentMessage.setLimit(limit + headerLength + length);\n" +
                 indent + "        %5$s;\n" +
-                indent + "        this._buffer.putStringWithoutLengthAscii(limit + headerLength, value);\n\n" +
+                indent + "        this.buffer().putStringWithoutLengthAscii(limit + headerLength, value);\n\n" +
                 indent + "        return this;\n" +
                 indent + "    }\n",
                 formatPropertyName(propertyName),
@@ -1160,7 +1181,7 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "        let limit: number = this._parentMessage.getLimit();\n" +
                 indent + "        this._parentMessage.getLimit(limit + headerLength + length);\n" +
                 indent + "        %5$s;\n" +
-                indent + "        this._buffer.putStringWithoutLengthAscii(limit + headerLength, value);\n\n" +
+                indent + "        this.buffer().putStringWithoutLengthAscii(limit + headerLength, value);\n\n" +
                 indent + "        return this;\n" +
                 indent + "    }\n",
                 formatPropertyName(propertyName),
@@ -1185,7 +1206,7 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "        let limit: number = this._parentMessage.getLimit();\n" +
                 indent + "        this._parentMessage.setLimit(limit + headerLength + length);\n" +
                 indent + "        %6$s;\n" +
-                indent + "        this._buffer.putBytes(limit + headerLength, bytes, 0, length);\n\n" +
+                indent + "        this.buffer().putBytes(limit + headerLength, bytes, 0, length);\n\n" +
                 indent + "        return this;\n" +
                 indent + "    }\n",
                 formatPropertyName(propertyName),
@@ -1216,7 +1237,7 @@ public class TypeScriptGenerator implements CodeGenerator
             indent + "        let dataLength: number = %s%s;\n" +
             indent + "        let bytesCopied: number = Math.min(length, dataLength);\n" +
             indent + "        this._parentMessage.setLimit(limit + headerLength + dataLength);\n" +
-            indent + "        this._buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);\n\n" +
+            indent + "        this.buffer().getBytes(limit + headerLength, dst, dstOffset, bytesCopied);\n\n" +
             indent + "        return bytesCopied;\n" +
             indent + "    }\n",
             propertyName,
@@ -1251,7 +1272,7 @@ public class TypeScriptGenerator implements CodeGenerator
             indent + "        let limit: number = this._parentMessage.getLimit();\n" +
             indent + "        this._parentMessage.setLimit(limit + headerLength + length);\n" +
             indent + "        %6$s;\n" +
-            indent + "        this._buffer.putBytes(limit + headerLength, src, srcOffset, length);\n\n" +
+            indent + "        this.buffer().putBytesWithOffset(limit + headerLength, src, srcOffset, length);\n\n" +
             indent + "        return this;\n" +
             indent + "    }\n",
             propertyName,
@@ -1338,20 +1359,18 @@ public class TypeScriptGenerator implements CodeGenerator
         final String enumName = formatClassName(enumToken.applicableTypeName());
         final Encoding encoding = enumToken.encoding();
         final String nullVal = encoding.applicableNullValue().toString();
-        final String packageName = registerTypesPackageName(enumToken, ir);
 
         try (Writer out = outputManager.createOutput(enumName))
         {
-            out.append(generateEnumFileHeader(packageName));
             out.append(generateEnumDeclaration(enumName, enumToken));
 
             final List<Token> valuesList = tokens.subList(1, tokens.size() - 1);
             out.append(generateEnumValues(valuesList, generateLiteral(encoding.primitiveType(), nullVal)));
             out.append(generateEnumBody(enumToken, enumName));
 
-            out.append(generateEnumLookupMethod(valuesList, enumName, nullVal));
-
             out.append("}\n");
+
+            out.append(generateEnumLookupMethod(valuesList, enumName, nullVal));
         }
     }
 
@@ -1362,7 +1381,6 @@ public class TypeScriptGenerator implements CodeGenerator
         final String decoderName = decoderName(compositeName);
         final String encoderName = encoderName(compositeName);
 
-        registerTypesPackageName(token, ir);
         final Set<String> importedTypesPackages = scanPackagesToImport(tokens);
 
         try (Writer out = outputManager.createOutput(decoderName))
@@ -1416,7 +1434,6 @@ public class TypeScriptGenerator implements CodeGenerator
             out.append("}\n");
         }
 
-        registerTypesPackageName(token, ir);
         try (Writer out = outputManager.createOutput(encoderName))
         {
             final String implementsString = implementsInterface(CompositeEncoderFlyweight.class.getSimpleName());
@@ -1649,60 +1666,70 @@ public class TypeScriptGenerator implements CodeGenerator
 
     private CharSequence generateEnumLookupMethod(final List<Token> tokens, final String enumName, final String nullVal)
     {
-        // final StringBuilder sb = new StringBuilder();
-        // final PrimitiveType primitiveType = tokens.get(0).encoding().primitiveType();
+        final StringBuilder sb = new StringBuilder();
+        final PrimitiveType primitiveType = tokens.get(0).encoding().primitiveType();
 
-        // sb.append("\n")
-        //     .append("    /**\n")
-        //     .append("     * Lookup the enum value representing the value.\n")
-        //     .append("     *\n")
-        //     .append("     * @param value encoded to be looked up.\n")
-        //     .append("     * @return the enum value representing the value.\n")
-        //     .append("     */\n")
-        //     .append("    public static ")
-        //     .append(" get(value: ").append(typeScriptTypeName(primitiveType)).append("): ").append(enumName)
-        //     .append("\n")
-        //     .append("    {\n")
-        //     .append("        switch (value)\n").append("        {\n");
+        sb.append("\n")
+            .append("/**\n")
+            .append("* Lookup the enum value representing the value.\n")
+            .append("*\n")
+            .append("* @param value encoded to be looked up.\n")
+            .append("* @return the enum value representing the value.\n")
+            .append("*/\n")
+            .append("export const get" + enumName + ":")
+            .append(" { [value: ").append(typeScriptTypeName(primitiveType)).append("]: ").append(enumName)
+            .append(" } = {\n");
+        for (final Token token : tokens)
+        {
+            final String constStr = token.encoding().constValue().toString();
+            final String name = token.name();
+            sb.append("    ").append(constStr).append(": ")
+                .append(enumName).append(".").append(name).append(",\n");
+        }
 
-        // for (final Token token : tokens)
-        // {
-        //     final String constStr = token.encoding().constValue().toString();
-        //     final String name = token.name();
-        //     sb.append("            case ").append(constStr).append(": return ").append(name).append(";\n");
-        // }
+        sb.append("    ").append(nullVal).append(": ")
+            .append(enumName).append(".NULL_VAL").append(",\n");
 
-        // sb.append("            case ").append(nullVal).append(": return NULL_VAL").append(";\n");
+        sb.append("}\n\n");
 
-        // final String handleUnknownLogic = shouldDecodeUnknownEnumValues ?
-        //     INDENT + INDENT + "return SBE_UNKNOWN;\n" :
-        //     INDENT + INDENT + "throw new Error(\"Unknown value: \" + value);\n";
+        sb.append("export function get").append(enumName).append("Value(value: number): ")
+            .append(enumName).append(" {\n");
 
-        // sb.append("        }\n\n")
-        //     .append(handleUnknownLogic)
-        //     .append("    }\n");
+        sb.append("    let result = get").append(enumName).append("[value];\n");
+        sb.append("    if (result === undefined) {\n");
+        if (shouldDecodeUnknownEnumValues)
+        {
+            sb.append("        return SBE_UNKNOWN;\n");
+        }
+        else
+        {
+            sb.append("         throw new Error(`").append(enumName + "not found for value: ${value}`);\n");
+        }
+        sb.append("    }\n");
+        sb.append("    return result;\n");
+        sb.append("}\n");
 
-        // return sb;
-
-        return "";
+        return sb;
     }
 
-    private StringBuilder generateImportStatements(final Set<String> packages, final String currentPackage)
+    private StringBuilder generateImportStatements(
+        final Set<String> packages,
+        final String currentPackage)
     {
         final StringBuilder importStatements = new StringBuilder();
 
-        // for (final String candidatePackage : packages)
-        // {
-        //     if (!candidatePackage.equals(currentPackage))
-        //     {
-        //         importStatements.append("import ").append(candidatePackage).append(".*;\n");
-        //     }
-        // }
+        for (final String candidatePackage : packages)
+        {
+            if (!candidatePackage.equals(currentPackage))
+            {
+                importStatements.append("import ").append(candidatePackage).append(".*;\n");
+            }
+        }
 
-        // if (importStatements.length() > 0)
-        // {
-        //     importStatements.append("\n\n");
-        // }
+        if (importStatements.length() > 0)
+        {
+            importStatements.append("\n\n");
+        }
 
         return importStatements;
     }
@@ -1714,63 +1741,56 @@ public class TypeScriptGenerator implements CodeGenerator
             return "\n";
         }
 
-        // return "import " + JAVA_INTERFACE_PACKAGE + ".*;\n\n";
-
-        return "";
+        return "\n";
     }
 
 
-    private CharSequence generateFileHeader(final String packageName, final Set<String> importedTypesPackages,
+    private CharSequence generateFileHeader(
+        final String packageName,
+        final Set<String> importedTypesPackages,
         final String fqBuffer)
     {
         final StringBuilder importStatements = generateImportStatements(importedTypesPackages, packageName);
 
-        // return "/* Generated SBE (Simple Binary Encoding) message codec. */\n" +
-        //     "package " + packageName + ";\n\n" +
-        //     "import " + fqBuffer + ";\n" +
-        //     interfaceImportLine() +
-        //     importStatements;
-
-        return "/* Generated SBE (Simple Binary Encoding) message codec. */\n";
+        return "/* Generated SBE (Simple Binary Encoding) message codec. */\n" +
+            "import * as agrona from \"../agrona/index\";\n" +
+            "import * as codecs from \"./index.g\";\n" +
+            interfaceImportLine() +
+            importStatements;
     }
 
     private CharSequence generateMainHeader(
-        final String packageName, final CodecType codecType, final boolean hasVarData)
+        final String packageName,
+        final CodecType codecType,
+        final boolean hasVarData)
     {
         final StringBuilder importStatements = generateImportStatements(packageNameByTypes, packageName);
 
-        // if (fqMutableBuffer.equals(fqReadOnlyBuffer))
-        // {
-        //     return
-        //         "/* Generated SBE (Simple Binary Encoding) message codec. */\n" +
-        //         "package " + packageName + ";\n\n" +
-        //         "import " + fqMutableBuffer + ";\n" +
-        //         interfaceImportLine() +
-        //         importStatements;
-        // }
-        // else
-        // {
-        //     final boolean hasMutableBuffer = ENCODER == codecType || hasVarData;
-        //     final boolean hasReadOnlyBuffer = DECODER == codecType || hasVarData;
+        if (fqMutableBuffer.equals(fqReadOnlyBuffer))
+        {
+            return
+                "/* Generated SBE (Simple Binary Encoding) message codec. */\n" +
+                "import * as agrona from \"../agrona/index\";\n" +
+                "import * as codecs from \"./index.g\";\n" +
+                interfaceImportLine() +
+                importStatements;
+        }
+        else
+        {
+            final boolean hasMutableBuffer = ENCODER == codecType || hasVarData;
+            final boolean hasReadOnlyBuffer = DECODER == codecType || hasVarData;
 
-        //     return
-        //         "/* Generated SBE (Simple Binary Encoding) message codec. */\n" +
-        //         "package " + packageName + ";\n\n" +
-        //         (hasMutableBuffer ? "import " + fqMutableBuffer + ";\n" : "") +
-        //         (hasReadOnlyBuffer ? "import " + fqReadOnlyBuffer + ";\n" : "") +
-        //         interfaceImportLine() +
-        //         importStatements;
-        // }
-
-        return "/* Generated SBE (Simple Binary Encoding) message codec. */\n";
+            return
+                "/* Generated SBE (Simple Binary Encoding) message codec. */\n" +
+                "import * as agrona from \"../agrona/index\";\n" +
+                "import * as codecs from \"./index.g\";\n" +
+                interfaceImportLine() +
+                importStatements;
+        }
     }
 
     private static CharSequence generateEnumFileHeader(final String packageName)
     {
-        //todo remove
-        // return
-        //     "/* Generated SBE (Simple Binary Encoding) message codec. */\n" +
-        //     "package " + packageName + ";\n\n";
         return
             "/* Generated SBE (Simple Binary Encoding) message codec. */\n" +
             "\n\n";
@@ -1830,8 +1850,7 @@ public class TypeScriptGenerator implements CodeGenerator
             sb.append("@deprecated\n");
         }
         sb
-            // .append("@SuppressWarnings(\"all\")\n") //todo: is this supported in TS?
-            .append("class ").append(className).append(implementsString).append('\n')
+            .append("export class ").append(className).append(implementsString).append('\n')
             .append("{\n");
 
         return sb;
@@ -1845,9 +1864,10 @@ public class TypeScriptGenerator implements CodeGenerator
                 "/* Generated SBE (Simple Binary Encoding) message codecs.*/\n" +
                 "/**\n" +
                 " * ").append(ir.description()).append("\n")
-                .append(
-                " */\n" +
-                "package ").append(ir.applicableNamespace()).append(";\n");
+                .append(" */\n");
+                // todo: decide if it should be removed
+                // +
+                //"package ").append(ir.applicableNamespace()).append(";\n");
         }
     }
 
@@ -1855,15 +1875,13 @@ public class TypeScriptGenerator implements CodeGenerator
     {
         try (Writer out = outputManager.createOutput(META_ATTRIBUTE_ENUM))
         {
-            out.append(
-                "/* Generated SBE (Simple Binary Encoding) message codec. */\n" +
-                "package ").append(ir.applicableNamespace()).append(";\n\n")
-                .append(
+            out.append("/* Generated SBE (Simple Binary Encoding) message codec. */\n" +
+                //+
+                //"package ").append(ir.applicableNamespace()).append(";\n\n")
                 "/**\n" +
                 " * Meta attribute enum for selecting a particular meta attribute value.\n" +
                 " */\n" +
-                // " @SuppressWarnings(\"all\")\n" +
-                "enum MetaAttribute\n" +
+                "export enum MetaAttribute\n" +
                 "{\n" +
                 "    /**\n" +
                 "     * The epoch or start of time. Default is 'UNIX' which is midnight 1st January 1970 UTC.\n" +
@@ -1889,7 +1907,7 @@ public class TypeScriptGenerator implements CodeGenerator
     {
         final StringBuilder sb = new StringBuilder();
 
-        sb.append("enum ").append(name).append("\n{\n");
+        sb.append("export enum ").append(name).append("\n{\n");
 
         return sb;
     }
@@ -2037,7 +2055,7 @@ public class TypeScriptGenerator implements CodeGenerator
             indent + "    }\n\n",
             formatPropertyName(propertyName),
             javaTypeName,
-            formatClassName(containingClassName),
+            CODEC_IMPORT_PATH + formatClassName(containingClassName),
             generatePut(encoding.primitiveType(), "this._offset + " + offset, "value", byteOrderStr));
     }
 
@@ -2186,7 +2204,7 @@ public class TypeScriptGenerator implements CodeGenerator
                 "\"Copy will go out of range: offset=\" + dstOffset);\n" +
                 indent + "        }\n\n" +
                 "%s" +
-                indent + "        this._buffer.getBytes(this._offset + %d, dst, dstOffset, length);\n\n" +
+                indent + "        this.buffer().getBytes(this._offset + %d, dst, dstOffset, length);\n\n" +
                 indent + "        return length;\n" +
                 indent + "    }\n",
                 Generators.toUpperFirstChar(propertyName),
@@ -2199,7 +2217,7 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "    {\n" +
                 "%s" +
                 indent + "        let dst: number[] = new number[%d];\n" +
-                indent + "        this._buffer.getBytes(this._offset + %d, dst, 0, %d);\n\n" +
+                indent + "        this.buffer().getBytes(this._offset + %d, dst, 0, %d);\n\n" +
                 indent + "        end: number = 0;\n" +
                 indent + "        for (; end < %d && dst[end] != 0; ++end);\n\n" +
                 indent + "        return new String(dst, 0, end, %s);\n" +
@@ -2220,7 +2238,7 @@ public class TypeScriptGenerator implements CodeGenerator
                     "%2$s" +
                     indent + "        for (let i = 0; i < %3$d; ++i)\n" +
                     indent + "        {\n" +
-                    indent + "            let c: number = this._buffer.getByte(this._offset + %4$d + i) & 0xFF;\n" +
+                    indent + "            let c: number = this.buffer().getByte(this._offset + %4$d + i) & 0xFF;\n" +
                     indent + "            if (c == 0)\n" +
                     indent + "            {\n" +
                     indent + "                return i;\n" +
@@ -2249,7 +2267,7 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "    {\n" +
                 "%s" +
                 indent + "        let bytesCopied: number = Math.min(length, %d);\n" +
-                indent + "        this._buffer.getBytes(this._offset + %d, dst, dstOffset, bytesCopied);\n\n" +
+                indent + "        this.buffer().getBytes(this._offset + %d, dst, dstOffset, bytesCopied);\n\n" +
                 indent + "        return bytesCopied;\n" +
                 indent + "    }\n",
                 Generators.toUpperFirstChar(propertyName),
@@ -2262,7 +2280,7 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "    {\n" +
                 "%s" +
                 indent + "        let bytesCopied: number = Math.min(length, %d);\n" +
-                indent + "        this._buffer.getBytes(this._offset + %d, dst, dstOffset, bytesCopied);\n\n" +
+                indent + "        this.buffer().getBytes(this._offset + %d, dst, dstOffset, bytesCopied);\n\n" +
                 indent + "        return bytesCopied;\n" +
                 indent + "    }\n",
                 Generators.toUpperFirstChar(propertyName),
@@ -2301,7 +2319,7 @@ public class TypeScriptGenerator implements CodeGenerator
     private String byteOrderString(final Encoding encoding)
     {
         //todo: convert to TS
-        return sizeOfPrimitive(encoding) == 1 ? "" : ", ByteOrder." + encoding.byteOrder();
+        return sizeOfPrimitive(encoding) == 1 ? "" : ", agrona.ByteOrder." + encoding.byteOrder();
     }
 
     private CharSequence generatePrimitiveArrayPropertyEncode(
@@ -2402,7 +2420,7 @@ public class TypeScriptGenerator implements CodeGenerator
             indent + "            throw new Error(" +
             "\"Copy will go out of range: offset=\" + srcOffset);\n" +
             indent + "        }\n\n" +
-            indent + "        this._buffer.putBytes(this._offset + %d, src, srcOffset, length);\n\n" +
+            indent + "        this.buffer().putBytesWithOffset(this._offset + %d, src, srcOffset, length);\n\n" +
             indent + "        return this;\n" +
             indent + "    }\n",
             formatClassName(containingClassName),
@@ -2422,10 +2440,10 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "            throw new Error(" +
                 "\"String too large for copy: byte length=\" + srcLength);\n" +
                 indent + "        }\n\n" +
-                indent + "        this._buffer.putStringWithoutLengthAscii(this._offset + %4$d, src);\n\n" +
+                indent + "        this.buffer().putStringWithoutLengthAscii(this._offset + %4$d, src);\n\n" +
                 indent + "        for (let start = srcLength; start < length; ++start)\n" +
                 indent + "        {\n" +
-                indent + "            this._buffer.putByte(this._offset + %4$d + start, (byte)0);\n" +
+                indent + "            this.buffer().putByte(this._offset + %4$d + start, 0);\n" +
                 indent + "        }\n\n" +
                 indent + "        return this;\n" +
                 indent + "    }\n",
@@ -2445,10 +2463,10 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "            throw new Error(" +
                 "\"CharSequence too large for copy: byte length=\" + srcLength);\n" +
                 indent + "        }\n\n" +
-                indent + "        this._buffer.putStringWithoutLengthAscii(this._offset + %4$d, src);\n\n" +
+                indent + "        this.buffer().putStringWithoutLengthAscii(this._offset + %4$d, src);\n\n" +
                 indent + "        for (let start = srcLength; start < length; ++start)\n" +
                 indent + "        {\n" +
-                indent + "            this._buffer.putByte(this._offset + %4$d + start, (byte)0);\n" +
+                indent + "            this.buffer().putByte(this._offset + %4$d + start, 0);\n" +
                 indent + "        }\n\n" +
                 indent + "        return this;\n" +
                 indent + "    }\n",
@@ -2470,10 +2488,10 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "            throw new Error(" +
                 "\"String too large for copy: byte length=\" + bytes.length);\n" +
                 indent + "        }\n\n" +
-                indent + "        this._buffer.putBytes(this._offset + %d, bytes, 0, bytes.length);\n\n" +
+                indent + "        this.buffer().putBytesWithOffset(this._offset + %d, bytes, 0, bytes.length);\n\n" +
                 indent + "        for (let start = bytes.length; start < length; ++start)\n" +
                 indent + "        {\n" +
-                indent + "            this._buffer.putByte(this._offset + %d + start, (byte)0);\n" +
+                indent + "            this.buffer().putByte(this._offset + %d + start, 0);\n" +
                 indent + "        }\n\n" +
                 indent + "        return this;\n" +
                 indent + "    }\n",
@@ -2502,10 +2520,10 @@ public class TypeScriptGenerator implements CodeGenerator
             indent + "            throw new Error(" +
             "\"length > maxValue for type: \" + length);\n" +
             indent + "        }\n\n" +
-            indent + "        this._buffer.putBytes(this._offset + %d, src, srcOffset, length);\n" +
+            indent + "        this.buffer().putBytesWithOffset(this._offset + %d, src, srcOffset, length);\n" +
             indent + "        for (let i = length; i < %d; i++)\n" +
             indent + "        {\n" +
-            indent + "            this._buffer.putByte(this._offset + %d + i, (byte)0);\n" +
+            indent + "            this.buffer().putByte(this._offset + %d + i, 0);\n" +
             indent + "        }\n\n" +
             indent + "        return this;\n" +
             indent + "    }\n",
@@ -2524,10 +2542,10 @@ public class TypeScriptGenerator implements CodeGenerator
             indent + "            throw new Error(" +
             "\"length > maxValue for type: \" + length);\n" +
             indent + "        }\n\n" +
-            indent + "        this._buffer.putBytes(this._offset + %d, src, srcOffset, length);\n" +
+            indent + "        this.buffer().putBytesWithOffset(this._offset + %d, src, srcOffset, length);\n" +
             indent + "        for (let i = length; i < %d; i++)\n" +
             indent + "        {\n" +
-            indent + "            this._buffer.putByte(this._offset + %d + i, (byte)0);\n" +
+            indent + "            this.buffer().putByte(this._offset + %d + i, 0);\n" +
             indent + "        }\n\n" +
             indent + "        return this;\n" +
             indent + "    }\n",
@@ -2663,9 +2681,9 @@ public class TypeScriptGenerator implements CodeGenerator
             "    public static SCHEMA_VERSION: %7$s = %8$s;\n" +
             "    public static SEMANTIC_VERSION: string = \"%11$s\";\n" +
             "    public static ENCODED_LENGTH: number = %2$d;\n" +
-            "    public static BYTE_ORDER: ByteOrder = ByteOrder.%4$s;\n\n" +
-            "    private _offset: number;\n" +
-            "    private _buffer: %3$s;\n\n" +
+            "    public static BYTE_ORDER: agrona.ByteOrder = agrona.ByteOrder.%4$s;\n\n" +
+            "    private _offset: number = 0;\n" +
+            "    private _buffer?: %3$s = undefined;\n\n" +
             "    public wrap(buffer: %3$s, offset: number): %1$s\n" +
             "    {\n" +
             "        if (buffer != this._buffer)\n" +
@@ -2677,6 +2695,9 @@ public class TypeScriptGenerator implements CodeGenerator
             "    }\n\n" +
             "    public buffer(): %3$s\n" +
             "    {\n" +
+            "        if (this._buffer === undefined) {\n" +
+            "           throw new Error(\"buffer is undefined\");\n" +
+            "        }\n" +
             "        return this._buffer;\n" +
             "    }\n\n" +
             "    public offset(): number\n" +
@@ -2685,15 +2706,15 @@ public class TypeScriptGenerator implements CodeGenerator
             "    }\n\n" +
             "    public encodedLength(): number\n" +
             "    {\n" +
-            "        return " + className + ".ENCODED_LENGTH;\n" +
+            "        return " + CODEC_IMPORT_PATH + className + ".ENCODED_LENGTH;\n" +
             "    }\n\n" +
             "    public sbeSchemaId(): %9$s\n" +
             "    {\n" +
-            "        return " + className + ".SCHEMA_ID;\n" +
+            "        return " + CODEC_IMPORT_PATH + className + ".SCHEMA_ID;\n" +
             "    }\n\n" +
             "    public sbeSchemaVersion(): %10$s\n" +
             "    {\n" +
-            "        return " + className + ".SCHEMA_VERSION;\n" +
+            "        return " + CODEC_IMPORT_PATH + className + ".SCHEMA_VERSION;\n" +
             "    }\n",
             className,
             size,
@@ -2734,25 +2755,30 @@ public class TypeScriptGenerator implements CodeGenerator
             "    public wrapAndApplyHeader(\n" +
             "        buffer: " + readOnlyBuffer + ",\n" +
             "        offset: number,\n" +
-            "        headerDecoder: " + headerClassName + "Decoder): " + className + "\n" +
+            "        headerDecoder: " + CODEC_IMPORT_PATH + headerClassName + "Decoder): " +
+            CODEC_IMPORT_PATH + className + "\n" +
             "    {\n" +
             "        headerDecoder.wrap(buffer, offset);\n\n" +
             "        let templateId: number = headerDecoder.templateId();\n" +
-            "        if (" + className + ".TEMPLATE_ID != templateId)\n" +
+            "        if (" + CODEC_IMPORT_PATH + className + ".TEMPLATE_ID != templateId)\n" +
             "        {\n" +
             "            throw new Error(\"Invalid TEMPLATE_ID: \" + templateId);\n" +
             "        }\n\n" +
             "        return this.wrap(\n" +
             "            buffer,\n" +
-            "            offset + " + headerClassName + "Decoder.ENCODED_LENGTH,\n" +
+            "            offset + " + CODEC_IMPORT_PATH + headerClassName + "Decoder.ENCODED_LENGTH,\n" +
             "            headerDecoder.blockLength(),\n" +
             "            headerDecoder.version());\n" +
             "    }\n\n" +
 
-            "    public sbeRewind(): " + className + "\n" +
+            "    public sbeRewind(): " + CODEC_IMPORT_PATH + className + "\n" +
             "    {\n" +
+            "        if (this._buffer === undefined)\n" +
+            "        {\n" +
+            "           throw new Error(\"buffer is null\");\n" +
+            "        }\n" +
             "        return this.wrap(this._buffer, this._initialOffset," +
-            " this._actingBlockLength, this._actingVersion);\n" +
+            "            this._actingBlockLength, this._actingVersion);\n" +
             "    }\n\n" +
 
             "    public sbeDecodedLength(): number\n" +
@@ -2801,9 +2827,9 @@ public class TypeScriptGenerator implements CodeGenerator
             "    public static SCHEMA_ID: %5$s = %6$s;\n" +
             "    public static SCHEMA_VERSION: %7$s = %8$s;\n" +
             "    public static SEMANTIC_VERSION: string = \"%19$s\";\n" +
-            "    public static BYTE_ORDER: ByteOrder = ByteOrder.%14$s;\n\n" + //todo: convert to TS
+            "    public static BYTE_ORDER: agrona.ByteOrder = agrona.ByteOrder.%14$s;\n\n" + //todo: convert to TS
             "    private _parentMessage: %9$s = this;\n" +
-            "    private _buffer: %11$s;\n" +
+            "    private _buffer?: %11$s = undefined;\n" +
             "    private _initialOffset: number = 0;\n" +
             "    private _offset: number = 0;\n" +
             "    private _limit: number = 0;\n" +
@@ -2831,6 +2857,9 @@ public class TypeScriptGenerator implements CodeGenerator
             "    }\n\n" +
             "    public buffer(): %11$s\n" +
             "    {\n" +
+            "        if (this._buffer === undefined) {\n" +
+            "           throw new Error(\"buffer is undefined\");\n" +
+            "        }\n" +
             "        return this._buffer;\n" +
             "    }\n\n" +
             "    public initialOffset(): number\n" +
@@ -2892,7 +2921,7 @@ public class TypeScriptGenerator implements CodeGenerator
 
         final StringBuilder builder = new StringBuilder(
             "    public wrapAndApplyHeader(\n" +
-            "        buffer: %2$s, offset: number, headerEncoder: %3$s): %1$s\n" +
+            "        buffer: %2$s, offset: number, headerEncoder: codecs.%3$s): %1$s\n" +
             "    {\n" +
             "        headerEncoder\n" +
             "            .wrap(buffer, offset)");
@@ -2922,7 +2951,7 @@ public class TypeScriptGenerator implements CodeGenerator
             }
         }
 
-        builder.append(";\n\n        return this.wrap(buffer, offset + %3$s.ENCODED_LENGTH);\n" + "    }\n\n");
+        builder.append(";\n\n        return this.wrap(buffer, offset + codecs.%3$s.ENCODED_LENGTH);\n" + "    }\n\n");
 
         final String wrapAndApplyMethod = String.format(
             builder.toString(),
@@ -3070,16 +3099,16 @@ public class TypeScriptGenerator implements CodeGenerator
 
         sb.append("\n")
             .append(indent).append("    public static ")
-            .append(propertyName).append("MetaAttribute(metaAttribute: MetaAttribute): string\n")
+            .append(propertyName).append("MetaAttribute(metaAttribute: codecs.MetaAttribute): string\n")
             .append(indent).append("    {\n")
-            .append(indent).append("        if (MetaAttribute.PRESENCE == metaAttribute)\n")
+            .append(indent).append("        if (codecs.MetaAttribute.PRESENCE == metaAttribute)\n")
             .append(indent).append("        {\n")
             .append(indent).append("            return \"").append(presence).append("\";\n")
             .append(indent).append("        }\n");
 
         if (!Strings.isEmpty(epoch))
         {
-            sb.append(indent).append("        if (MetaAttribute.EPOCH == metaAttribute)\n")
+            sb.append(indent).append("        if (codecs.MetaAttribute.EPOCH == metaAttribute)\n")
                 .append(indent).append("        {\n")
                 .append(indent).append("            return \"").append(epoch).append("\";\n")
                 .append(indent).append("        }\n");
@@ -3087,7 +3116,7 @@ public class TypeScriptGenerator implements CodeGenerator
 
         if (!Strings.isEmpty(timeUnit))
         {
-            sb.append(indent).append("        if (MetaAttribute.TIME_UNIT == metaAttribute)\n")
+            sb.append(indent).append("        if (codecs.MetaAttribute.TIME_UNIT == metaAttribute)\n")
                 .append(indent).append("        {\n")
                 .append(indent).append("            return \"").append(timeUnit).append("\";\n")
                 .append(indent).append("        }\n");
@@ -3095,7 +3124,7 @@ public class TypeScriptGenerator implements CodeGenerator
 
         if (!Strings.isEmpty(semanticType))
         {
-            sb.append(indent).append("        if (MetaAttribute.SEMANTIC_TYPE == metaAttribute)\n")
+            sb.append(indent).append("        if (codecs.MetaAttribute.SEMANTIC_TYPE == metaAttribute)\n")
                 .append(indent).append("        {\n")
                 .append(indent).append("            return \"").append(semanticType).append("\";\n")
                 .append(indent).append("        }\n");
@@ -3145,7 +3174,7 @@ public class TypeScriptGenerator implements CodeGenerator
         else
         {
             final String rawGetStr = generateGet(
-                encoding.primitiveType(), "offset + " + typeToken.offset(), byteOrderString(encoding));
+                encoding.primitiveType(), "this._offset + " + typeToken.offset(), byteOrderString(encoding));
 
             new Formatter(sb).format(
                 "\n" +
@@ -3164,13 +3193,14 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "    public %s(): %s\n" +
                 indent + "    {\n" +
                 "%s" +
-                indent + "        return %s.get(%s);\n" +
+                indent + "        let enumValue: number = %s;\n" +
+                indent + "        return codecs.get%sValue(enumValue);\n" +
                 indent + "    }\n\n",
                 propertyName,
-                enumName,
+                CODEC_IMPORT_PATH + enumName,
                 generatePropertyNotPresentCondition(inComposite, DECODER, fieldToken, enumName, indent),
-                enumName,
-                rawGetStr);
+                rawGetStr,
+                enumName);
         }
     }
 
@@ -3196,9 +3226,9 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "        return this;\n" +
                 indent + "    }\n",
                 propertyName,
+                CODEC_IMPORT_PATH + enumName,
                 formatClassName(containingClassName),
-                enumName,
-                generatePut(encoding.primitiveType(), "this._offset + " + offset, "value.value()", byteOrderString));
+                generatePut(encoding.primitiveType(), "this._offset + " + offset, "value", byteOrderString));
         }
     }
 
@@ -3223,7 +3253,7 @@ public class TypeScriptGenerator implements CodeGenerator
             indent + "    public %s(): %s\n" +
             indent + "    {\n" +
             "%s" +
-            indent + "        this._%s.wrap(this._buffer, this._offset + %d);\n" +
+            indent + "        this._%s.wrap(this.buffer(), this._offset + %d);\n" +
             indent + "        return this._%s;\n" +
             indent + "    }\n",
             propertyName,
@@ -3247,19 +3277,19 @@ public class TypeScriptGenerator implements CodeGenerator
         new Formatter(sb).format("\n" +
             indent + "    private _%s: %s = new %s();\n",
             propertyName,
-            compositeName,
-            compositeName);
+            CODEC_IMPORT_PATH + compositeName,
+            CODEC_IMPORT_PATH + compositeName);
 
         generateFlyweightPropertyJavadoc(sb, indent + INDENT, propertyToken, compositeName);
         new Formatter(sb).format("\n" +
             indent + "    public %s(): %s\n" +
             indent + "    {\n" +
             "%s" +
-            indent + "        this._%s.wrap(this._buffer, this._offset + %d);\n" +
+            indent + "        this._%s.wrap(this.buffer(), this._offset + %d);\n" +
             indent + "        return this._%s;\n" +
             indent + "    }\n",
             propertyName,
-            compositeName,
+            CODEC_IMPORT_PATH + compositeName,
             generatePropertyNotPresentCondition(inComposite, codecType, propertyToken, null, indent),
             propertyName,
             compositeToken.offset(),
@@ -3273,32 +3303,32 @@ public class TypeScriptGenerator implements CodeGenerator
         {
             case CHAR:
             case INT8:
-                return "this._buffer.getByte(" + index + ")";
+                return "this.buffer().getByte(" + index + ")";
 
             case UINT8:
-                return "((short)(this._buffer.getByte(" + index + ") & 0xFF))";
+                return "this.buffer().getByte(" + index + ") & 0xFF";
 
             case INT16:
-                return "this._buffer.getShort(" + index + byteOrder + ")";
+                return "this.buffer().getShort(" + index + byteOrder + ")";
 
             case UINT16:
-                return "(this._buffer.getShort(" + index + byteOrder + ") & 0xFFFF)";
+                return "this.buffer().getShort(" + index + byteOrder + ") & 0xFFFF";
 
             case INT32:
-                return "this._buffer.getInt(" + index + byteOrder + ")";
+                return "this.buffer().getInt(" + index + byteOrder + ")";
 
             case UINT32:
-                return "(this._buffer.getInt(" + index + byteOrder + ") & 0xFFFF_FFFFL)";
+                return "this.buffer().getInt(" + index + byteOrder + ") >>> 0";
 
             case FLOAT:
-                return "this._buffer.getFloat(" + index + byteOrder + ")";
+                return "this.buffer().getFloat(" + index + byteOrder + ")";
 
             case INT64:
             case UINT64:
-                return "this._buffer.getLong(" + index + byteOrder + ")";
+                return "this.buffer().getLong(" + index + byteOrder + ")";
 
             case DOUBLE:
-                return "this._buffer.getDouble(" + index + byteOrder + ")";
+                return "this.buffer().getDouble(" + index + byteOrder + ")";
 
             default:
                 break;
@@ -3315,32 +3345,32 @@ public class TypeScriptGenerator implements CodeGenerator
         {
             case CHAR:
             case INT8:
-                return "this._buffer.putByte(" + index + ", " + value + ")";
+                return "this.buffer().putByte(" + index + ", " + value + ")";
 
             case UINT8:
-                return "this._buffer.putByte(" + index + ", (byte)" + value + ")";
+                return "this.buffer().putByte(" + index + ", " + value + ")";
 
             case INT16:
-                return "this._buffer.putShort(" + index + ", " + value + byteOrder + ")";
+                return "this.buffer().putShort(" + index + ", " + value + byteOrder + ")";
 
             case UINT16:
-                return "this._buffer.putShort(" + index + ", (short)" + value + byteOrder + ")";
+                return "this.buffer().putShort(" + index + ", " + value + byteOrder + ")";
 
             case INT32:
-                return "this._buffer.putInt(" + index + ", " + value + byteOrder + ")";
+                return "this.buffer().putInt(" + index + ", " + value + byteOrder + ")";
 
             case UINT32:
-                return "this._buffer.putInt(" + index + ", (int)" + value + byteOrder + ")";
+                return "this.buffer().putInt(" + index + ", " + value + byteOrder + ")";
 
             case FLOAT:
-                return "this._buffer.putFloat(" + index + ", " + value + byteOrder + ")";
+                return "this.buffer().putFloat(" + index + ", " + value + byteOrder + ")";
 
             case INT64:
             case UINT64:
-                return "this._buffer.putLong(" + index + ", " + value + byteOrder + ")";
+                return "this.buffer().putLong(" + index + ", " + value + byteOrder + ")";
 
             case DOUBLE:
-                return "this._buffer.putDouble(" + index + ", " + value + byteOrder + ")";
+                return "this.buffer().putDouble(" + index + ", " + value + byteOrder + ")";
 
             default:
                 break;
@@ -3363,16 +3393,16 @@ public class TypeScriptGenerator implements CodeGenerator
         switch (type)
         {
             case UINT8:
-                return "0 == this._buffer.getByte(this._offset)";
+                return "0 == this.buffer().getByte(this._offset)";
 
             case UINT16:
-                return "0 == this._buffer.getShort(this._offset)";
+                return "0 == this.buffer().getShort(this._offset)";
 
             case UINT32:
-                return "0 == this._buffer.getInt(this._offset)";
+                return "0 == this.buffer().getInt(this._offset)";
 
             case UINT64:
-                return "0 == this._buffer.getLong(this._offset)";
+                return "0 == this.buffer().getLong(this._offset)";
 
             default:
                 break;
@@ -3386,16 +3416,16 @@ public class TypeScriptGenerator implements CodeGenerator
         switch (type)
         {
             case UINT8:
-                return "0 != (this._buffer.getByte(this._offset) & (1 << " + bitIndex + "))";
+                return "0 != (this.buffer().getByte(this._offset) & (1 << " + bitIndex + "))";
 
             case UINT16:
-                return "0 != (this._buffer.getShort(this._offset" + byteOrder + ") & (1 << " + bitIndex + "))";
+                return "0 != (this.buffer().getShort(this._offset" + byteOrder + ") & (1 << " + bitIndex + "))";
 
             case UINT32:
-                return "0 != (this._buffer.getInt(this._offset" + byteOrder + ") & (1 << " + bitIndex + "))";
+                return "0 != (this.buffer().getInt(this._offset" + byteOrder + ") & (1 << " + bitIndex + "))";
 
             case UINT64:
-                return "0 != (this._buffer.getLong(this._offset" + byteOrder + ") & (1L << " + bitIndex + "))";
+                return "0 != (this.buffer().getLong(this._offset" + byteOrder + ") & (1L << " + bitIndex + "))";
 
             default:
                 break;
@@ -3432,25 +3462,25 @@ public class TypeScriptGenerator implements CodeGenerator
                 return
                     "        let bits: number = buffer.getByte(this._offset);\n" +
                     "        bits = (byte)(value ? bits | (1 << " + bitIdx + ") : bits & ~(1 << " + bitIdx + "));\n" +
-                    "        this._buffer.putByte(this._offset, bits);";
+                    "        this.buffer().putByte(this._offset, bits);";
 
             case UINT16:
                 return
                     "        short bits = buffer.getShort(this._offset" + byteOrder + ");\n" +
                     "        bits = (short)(value ? bits | (1 << " + bitIdx + ") : bits & ~(1 << " + bitIdx + "));\n" +
-                    "        this._buffer.putShort(this._offset, bits" + byteOrder + ");";
+                    "        this.buffer().putShort(this._offset, bits" + byteOrder + ");";
 
             case UINT32:
                 return
                     "        int bits = buffer.getInt(this._offset" + byteOrder + ");\n" +
                     "        bits = value ? bits | (1 << " + bitIdx + ") : bits & ~(1 << " + bitIdx + ");\n" +
-                    "        this._buffer.putInt(this._offset, bits" + byteOrder + ");";
+                    "        this.buffer().putInt(this._offset, bits" + byteOrder + ");";
 
             case UINT64:
                 return
                     "        long bits = buffer.getLong(this._offset" + byteOrder + ");\n" +
                     "        bits = value ? bits | (1L << " + bitIdx + ") : bits & ~(1L << " + bitIdx + ");\n" +
-                    "        this._buffer.putLong(this._offset, bits" + byteOrder + ");";
+                    "        this.buffer().putLong(this._offset, bits" + byteOrder + ");";
 
             default:
                 break;
@@ -3466,11 +3496,11 @@ public class TypeScriptGenerator implements CodeGenerator
         {
             case UINT8:
                 return
-                    "        return (byte)(value ? bits | (1 << " + bitIdx + ") : bits & ~(1 << " + bitIdx + "));\n";
+                    "        return <number>(value ? bits | (1 << " + bitIdx + ") : bits & ~(1 << " + bitIdx + "));\n";
 
             case UINT16:
                 return
-                    "        return (short)(value ? bits | (1 << " + bitIdx + ") : bits & ~(1 << " + bitIdx + "));\n";
+                    "        return <number>(value ? bits | (1 << " + bitIdx + ") : bits & ~(1 << " + bitIdx + "));\n";
 
             case UINT32:
                 return
@@ -3492,16 +3522,17 @@ public class TypeScriptGenerator implements CodeGenerator
         appendToString(sb);
 
         sb.append('\n');
-        append(sb, INDENT, "public appendTo(builder: StringBuilder): StringBuilder");
+        append(sb, INDENT, "public appendTo(builder: agrona.StringBuilder): agrona.StringBuilder");
         append(sb, INDENT, "{");
         append(sb, INDENT, "    if (null == this._buffer)");
         append(sb, INDENT, "    {");
         append(sb, INDENT, "        return builder;");
         append(sb, INDENT, "    }");
         sb.append('\n');
-        append(sb, INDENT, "    let decoder: " + decoderName + " = new " + decoderName + "();");
+        append(sb, INDENT, "    let decoder: codecs." + decoderName + " = new codecs." + decoderName + "();");
         append(sb, INDENT, "    decoder.wrap(this._buffer, this._initialOffset, ");
-        append(sb, "", decoderName + ".BLOCK_LENGTH, " + decoderName + ".SCHEMA_VERSION);");
+        append(sb, INDENT, "        codecs." + decoderName + ".BLOCK_LENGTH, ");
+        append(sb, INDENT, "        codecs." + decoderName + ".SCHEMA_VERSION);");
         sb.append('\n');
         append(sb, INDENT, "    return decoder.appendTo(builder);");
         append(sb, INDENT, "}");
@@ -3513,14 +3544,14 @@ public class TypeScriptGenerator implements CodeGenerator
 
         appendToString(sb);
         sb.append('\n');
-        append(sb, INDENT, "public appendTo(builder: StringBuilder): StringBuilder");
+        append(sb, INDENT, "public appendTo(builder: agrona.StringBuilder): agrona.StringBuilder");
         append(sb, INDENT, "{");
         append(sb, INDENT, "    if (null == this._buffer)");
         append(sb, INDENT, "    {");
         append(sb, INDENT, "        return builder;");
         append(sb, INDENT, "    }");
         sb.append('\n');
-        append(sb, INDENT, "    let decoder: " + decoderName + " = new " + decoderName + "();");
+        append(sb, INDENT, "    let decoder: codecs." + decoderName + " = new codecs." + decoderName + "();");
         append(sb, INDENT, "    decoder.wrap(this._buffer, this._offset);");
         sb.append('\n');
         append(sb, INDENT, "    return decoder.appendTo(builder);");
@@ -3535,7 +3566,7 @@ public class TypeScriptGenerator implements CodeGenerator
 
         appendToString(sb);
         sb.append('\n');
-        append(sb, INDENT, "public appendTo(builder: StringBuilder): StringBuilder");
+        append(sb, INDENT, "public appendTo(builder: agrona.StringBuilder): agrona.StringBuilder");
         append(sb, INDENT, "{");
         append(sb, INDENT, "    if (null == this._buffer)");
         append(sb, INDENT, "    {");
@@ -3573,7 +3604,7 @@ public class TypeScriptGenerator implements CodeGenerator
 
         appendToString(sb);
         sb.append('\n');
-        append(sb, INDENT, "public appendTo(builder: StringBuilder): StringBuilder");
+        append(sb, INDENT, "public appendTo(builder: agrona.StringBuilder): agrona.StringBuilder");
         append(sb, INDENT, "{");
         Separator.BEGIN_SET.appendToGeneratedBuilder(sb, INDENT + INDENT);
         append(sb, INDENT, "    let atLeastOne: boolean = false;");
@@ -3610,9 +3641,10 @@ public class TypeScriptGenerator implements CodeGenerator
         final List<Token> groups,
         final List<Token> varData)
     {
+        final String decoderName = decoderName(name);
         appendMessageToString(sb, decoderName(name));
         sb.append('\n');
-        append(sb, INDENT, "public appendTo(builder: StringBuilder): StringBuilder");
+        append(sb, INDENT, "public appendTo(builder: agrona.StringBuilder): agrona.StringBuilder");
         append(sb, INDENT, "{");
         append(sb, INDENT, "    if (null == this._buffer)");
         append(sb, INDENT, "    {");
@@ -3622,23 +3654,23 @@ public class TypeScriptGenerator implements CodeGenerator
         append(sb, INDENT, "    let originalLimit: number = this.getLimit();");
         append(sb, INDENT, "    this.setLimit(this._initialOffset + this._actingBlockLength);");
         append(sb, INDENT, "    builder.append(\"[" + name + "](sbeTemplateId=\");");
-        append(sb, INDENT, "    builder.append(" + name + ".TEMPLATE_ID);");
+        append(sb, INDENT, "    builder.append_number(" + decoderName + ".TEMPLATE_ID);");
         append(sb, INDENT, "    builder.append(\"|sbeSchemaId=\");");
-        append(sb, INDENT, "    builder.append(" + name + ".SCHEMA_ID);");
+        append(sb, INDENT, "    builder.append_number(" + decoderName + ".SCHEMA_ID);");
         append(sb, INDENT, "    builder.append(\"|sbeSchemaVersion=\");");
-        append(sb, INDENT, "    if (this._parentMessage.actingVersion() != " + name + ".SCHEMA_VERSION)");
+        append(sb, INDENT, "    if (this._parentMessage.actingVersion() != " + decoderName + ".SCHEMA_VERSION)");
         append(sb, INDENT, "    {");
-        append(sb, INDENT, "        builder.append(this._parentMessage.actingVersion());");
+        append(sb, INDENT, "        builder.append_number(this._parentMessage.actingVersion());");
         append(sb, INDENT, "        builder.append('/');");
         append(sb, INDENT, "    }");
-        append(sb, INDENT, "    builder.append(" + name + ".SCHEMA_VERSION);");
+        append(sb, INDENT, "    builder.append_number(" + decoderName + ".SCHEMA_VERSION);");
         append(sb, INDENT, "    builder.append(\"|sbeBlockLength=\");");
-        append(sb, INDENT, "    if (this._actingBlockLength != " + name + ".BLOCK_LENGTH)");
+        append(sb, INDENT, "    if (this._actingBlockLength != " + decoderName + ".BLOCK_LENGTH)");
         append(sb, INDENT, "    {");
-        append(sb, INDENT, "        builder.append(this._actingBlockLength);");
+        append(sb, INDENT, "        builder.append_number(this._actingBlockLength);");
         append(sb, INDENT, "        builder.append('/');");
         append(sb, INDENT, "    }");
-        append(sb, INDENT, "    builder.append(" + name + ".BLOCK_LENGTH);");
+        append(sb, INDENT, "    builder.append_number(" + decoderName + ".BLOCK_LENGTH);");
         append(sb, INDENT, "    builder.append(\"):\");");
         appendDecoderDisplay(sb, tokens, groups, varData, INDENT + INDENT);
         sb.append('\n');
@@ -3658,7 +3690,7 @@ public class TypeScriptGenerator implements CodeGenerator
         final String indent = baseIndent + INDENT;
 
         sb.append('\n');
-        append(sb, indent, "public appendTo(builder: StringBuilder): StringBuilder");
+        append(sb, indent, "public appendTo(builder: agrona.StringBuilder): agrona.StringBuilder");
         append(sb, indent, "{");
         append(sb, indent, "    if (null == this._buffer)");
         append(sb, indent, "    {");
@@ -3751,7 +3783,7 @@ public class TypeScriptGenerator implements CodeGenerator
             if (null == characterEncoding)
             {
                 final String name = Generators.toUpperFirstChar(varDataToken.name());
-                append(sb, indent, "builder.append(skip" + name + "()).append(\" bytes of raw data\");");
+                append(sb, indent, "builder.append_number(skip" + name + "()).append(\" bytes of raw data\");");
             }
             else
             {
@@ -3825,7 +3857,7 @@ public class TypeScriptGenerator implements CodeGenerator
                 break;
 
             case BEGIN_ENUM:
-                append(sb, indent, "builder.append(this." + fieldName + "());");
+                append(sb, indent, "builder.append_number(this." + fieldName + "());");
                 break;
 
             case BEGIN_SET:
@@ -3835,7 +3867,7 @@ public class TypeScriptGenerator implements CodeGenerator
             case BEGIN_COMPOSITE:
             {
                 final String typeName = formatClassName(decoderName(typeToken.applicableTypeName()));
-                append(sb, indent, "let " + fieldName + ": " + typeName + " = this." + fieldName + "();");
+                append(sb, indent, "let " + fieldName + ": codecs." + typeName + " = this." + fieldName + "();");
                 append(sb, indent, "if (" + fieldName + " != null)");
                 append(sb, indent, "{");
                 append(sb, indent, "    " + fieldName + ".appendTo(builder);");
@@ -3867,7 +3899,7 @@ public class TypeScriptGenerator implements CodeGenerator
         append(sb, INDENT, "        return \"\";");
         append(sb, INDENT, "    }");
         sb.append('\n');
-        append(sb, INDENT, "    return this.appendTo(new StringBuilder()).toString();");
+        append(sb, INDENT, "    return this.appendTo(new agrona.StringBuilder()).toString();");
         append(sb, INDENT, "}");
     }
 
@@ -3881,11 +3913,12 @@ public class TypeScriptGenerator implements CodeGenerator
         append(sb, INDENT, "        return \"\";");
         append(sb, INDENT, "    }");
         sb.append('\n');
-        append(sb, INDENT, "    let decoder: " + decoderName + " = new " + decoderName + "();");
+        append(sb, INDENT, "    let decoder: " + CODEC_IMPORT_PATH + decoderName +
+            " = new " + CODEC_IMPORT_PATH + decoderName + "();");
         append(sb, INDENT, "    decoder.wrap(this._buffer, this._initialOffset, ");
-        append(sb, "", "this._actingBlockLength, this._actingVersion);");
+        append(sb, INDENT, "        this._actingBlockLength, this._actingVersion);");
         sb.append('\n');
-        append(sb, INDENT, "    return decoder.appendTo(new StringBuilder()).toString();");
+        append(sb, INDENT, "    return decoder.appendTo(new agrona.StringBuilder()).toString();");
         append(sb, INDENT, "}");
     }
 
