@@ -79,7 +79,7 @@ public class TypeScriptUtil
 
     static
     {
-        TYPE_NAME_BY_PRIMITIVE_TYPE_MAP.put(PrimitiveType.CHAR, "string");
+        TYPE_NAME_BY_PRIMITIVE_TYPE_MAP.put(PrimitiveType.CHAR, "number");
         TYPE_NAME_BY_PRIMITIVE_TYPE_MAP.put(PrimitiveType.INT8, "number");
         TYPE_NAME_BY_PRIMITIVE_TYPE_MAP.put(PrimitiveType.INT16, "number");
         TYPE_NAME_BY_PRIMITIVE_TYPE_MAP.put(PrimitiveType.INT32, "number");
@@ -218,7 +218,7 @@ public class TypeScriptUtil
         final String charsetName = STD_CHARSETS.get(encoding);
         if (null != charsetName)
         {
-            return "java.nio.charset.StandardCharsets." + charsetName;
+            return charsetName;
         }
         else
         {
@@ -238,7 +238,7 @@ public class TypeScriptUtil
         final String charsetName = STD_CHARSETS.get(encoding);
         if (null != charsetName)
         {
-            return "java.nio.charset.StandardCharsets." + charsetName + ".name()";
+            return charsetName;
         }
         else
         {
