@@ -58,7 +58,7 @@
         <field name="extras" id="7" type="OptionalExtras"/>
         <field name="discountedModel" id="8" type="Model" presence="constant" valueRef="Model.C"/>
         <field name="engine" id="9" type="Engine"/>
-        <group name="fuelFigures" id="10" dimensionType="groupSizeEncoding">
+        <!-- <group name="fuelFigures" id="10" dimensionType="groupSizeEncoding">
             <field name="speed" id="11" type="uint16"/>
             <field name="mpg" id="12" type="float"/>
             <data name="usageDescription" id="200" type="varAsciiEncoding"/>
@@ -69,7 +69,7 @@
                 <field name="mph" id="16" type="uint16"/>
                 <field name="seconds" id="17" type="float"/>
             </group>
-        </group>
+        </group> -->
         <data name="manufacturer" id="18" type="varStringEncoding"/>
         <data name="model" id="19" type="varStringEncoding"/>
         <data name="activationCode" id="20" type="varAsciiEncoding"/>
