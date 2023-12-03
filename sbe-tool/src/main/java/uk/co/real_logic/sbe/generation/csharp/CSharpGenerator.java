@@ -40,6 +40,9 @@ import static uk.co.real_logic.sbe.ir.GenerationUtil.collectGroups;
 import static uk.co.real_logic.sbe.ir.GenerationUtil.collectFields;
 import static uk.co.real_logic.sbe.ir.GenerationUtil.findEndSignal;
 
+import static uk.co.real_logic.sbe.SbeTool.CSHARP_GENERATE_SEALED_CLASSES;
+import static uk.co.real_logic.sbe.SbeTool.CSHARP_GENERATE_MESSAGE_INTERFACE;
+
 /**
  * Codec generator for the CSharp programming language.
  */
@@ -205,9 +208,13 @@ public class CSharpGenerator implements CodeGenerator
         final String dimensionsClassName = formatClassName(tokens.get(index + 1).name());
         final int dimensionHeaderLength = tokens.get(index + 1).encodedLength();
 
+        final boolean sealedClasses = Boolean.parseBoolean(System.getProperty(CSHARP_GENERATE_SEALED_CLASSES, "true"));
+
+        final String classModifier = sealedClasses ? "sealed partial" : "partial";
+
         sb.append(String.format("\n" +
             "%1$s" +
-            indent + "public sealed partial class %2$sGroup\n" +
+            indent + "public " + classModifier + " class %2$sGroup\n" +
             indent + "{\n" +
             indent + INDENT + "private readonly %3$s _dimensions = new %3$s();\n" +
             indent + INDENT + "private %4$s _parentMessage;\n" +
@@ -690,8 +697,13 @@ public class CSharpGenerator implements CodeGenerator
 
     private CharSequence generateClassDeclaration(final String className)
     {
+        final boolean sealedClasses = Boolean.parseBoolean(System.getProperty(CSHARP_GENERATE_SEALED_CLASSES, "true"));
+        final String messageInterface = System.getProperty(CSHARP_GENERATE_MESSAGE_INTERFACE, "");
+        final String classModifier = sealedClasses ? "sealed partial" : "partial";
+        final String interfaceModifier = messageInterface.isEmpty() ? "" : " : " + messageInterface;
+
         return String.format(
-            INDENT + "public sealed partial class %s\n" +
+            INDENT + "public " + classModifier + " class %s" + interfaceModifier + "\n" +
             INDENT + "{\n",
             className);
     }
