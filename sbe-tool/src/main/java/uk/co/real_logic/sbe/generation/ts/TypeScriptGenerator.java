@@ -182,6 +182,7 @@ public class TypeScriptGenerator implements CodeGenerator
         {
             final Set<String> types = new HashSet<>();
             final Set<String> enums = new HashSet<>();
+            // final Set<String> groupTypes = new HashSet<>();
 
             final StringBuilder exportBuilder = new StringBuilder();
             exportBuilder.append("export {\n");
@@ -189,15 +190,25 @@ public class TypeScriptGenerator implements CodeGenerator
             for (final List<Token> tokens : ir.types())
             {
                 final Token type = tokens.get(0);
+                if (type.signal() == Signal.BEGIN_ENUM && !enums.contains(type.applicableTypeName()))
+                {
+                    enums.add(type.applicableTypeName());
+                    continue;
+                }
 
-                types.add(type.name());
+                if (!types.contains(type.name()))
+                {
+                    types.add(type.name());
+                }
             }
 
             for (final List<Token> tokens : ir.messages())
             {
                 final Token msgToken = tokens.get(0);
-                types.add(msgToken.name());
-
+                if (!types.contains(msgToken.name()))
+                {
+                    types.add(msgToken.name());
+                }
                 final List<Token> messageBody = getMessageBody(tokens);
                 int i = 0;
 
@@ -205,40 +216,43 @@ public class TypeScriptGenerator implements CodeGenerator
                 i = collectFields(messageBody, i, fields);
                 for (final Token field : fields)
                 {
-                    if (field.signal() == Signal.BEGIN_COMPOSITE && !types.contains(field.name()))
-                    {
-                        types.add(field.name());
-                    }
                     if (field.signal() == Signal.BEGIN_ENUM && !enums.contains(field.applicableTypeName()))
                     {
                         enums.add(field.applicableTypeName());
-                        out.append("import { ")
-                            .append(field.applicableTypeName())
-                            .append(", get" + field.applicableTypeName())
-                            .append(", get" + field.applicableTypeName() + "Value")
-                            .append(", get" + field.applicableTypeName() + "String")
-                            .append(" } from './")
-                            .append(field.applicableTypeName())
-                            .append(".g';\n");
-                        exportBuilder.append("    ")
-                            .append(field.applicableTypeName())
-                            .append(", get" + field.applicableTypeName())
-                            .append(", get" + field.applicableTypeName() + "Value")
-                            .append(", get" + field.applicableTypeName() + "String")
-                            .append(",\n");
                     }
                 }
+                // final List<Token> groups = new ArrayList<>();
+                // i = collectGroups(messageBody, i, groups);
+                // for (final Token token : groups)
+                // {
+                //     if (token.signal() == Signal.BEGIN_GROUP && !groupTypes.contains(token.name()))
+                //     {
+                //         System.out.println("group: " + token.name());
 
-                exportBuilder.append("    ").append(decoderName(msgToken.name())).append(",\n");
-                exportBuilder.append("    ").append(encoderName(msgToken.name())).append(",\n");
+                //     }
+                // }
+            }
+
+            for (final String name : enums)
+            {
+                out.append("import { ")
+                    .append(name)
+                    .append(", get" + name)
+                    .append(", get" + name + "Value")
+                    .append(", get" + name + "String")
+                    .append(" } from './")
+                    .append(name)
+                    .append(".g';\n");
+                exportBuilder.append("    ")
+                    .append(name)
+                    .append(", get" + name)
+                    .append(", get" + name + "Value")
+                    .append(", get" + name + "String")
+                    .append(",\n");
             }
 
             for (final String type : types)
             {
-                if (enums.contains(type))
-                {
-                    continue;
-                }
                 out.append("import { ")
                     .append(decoderName(type))
                     .append(" } from './")
@@ -303,14 +317,17 @@ public class TypeScriptGenerator implements CodeGenerator
             out.append(generateEncoderFlyweightCode(className, msgToken));
 
             final StringBuilder sb = new StringBuilder();
+            final StringBuilder groupClassDeclarationStringBuilder = new StringBuilder();
             generateEncoderFields(sb, className, fields, BASE_INDENT);
-            generateEncoderGroups(sb, className, groups, BASE_INDENT, false);
+            generateEncoderGroups(groupClassDeclarationStringBuilder, sb, className, groups, BASE_INDENT, false);
             generateEncoderVarData(sb, className, varData, BASE_INDENT);
 
             generateEncoderDisplay(sb, decoderName(msgToken.name()));
 
             out.append(sb);
             out.append("}\n");
+
+            out.append(groupClassDeclarationStringBuilder);
         }
     }
 
@@ -337,8 +354,9 @@ public class TypeScriptGenerator implements CodeGenerator
             out.append(generateDecoderFlyweightCode(className, msgToken));
 
             final StringBuilder sb = new StringBuilder();
+            final StringBuilder groupClassDeclarationStringBuilder = new StringBuilder();
             generateDecoderFields(sb, fields, BASE_INDENT);
-            generateDecoderGroups(sb, className, groups, BASE_INDENT, false);
+            generateDecoderGroups(groupClassDeclarationStringBuilder, sb, className, groups, BASE_INDENT, false);
             generateDecoderVarData(sb, varData, BASE_INDENT);
 
             generateDecoderDisplay(sb, msgToken.name(), fields, groups, varData);
@@ -346,11 +364,14 @@ public class TypeScriptGenerator implements CodeGenerator
 
             out.append(sb);
             out.append("}\n");
+
+            out.append(groupClassDeclarationStringBuilder);
         }
     }
 
     private void generateDecoderGroups(
         final StringBuilder sb,
+        final StringBuilder sbParentClass,
         final String outerClassName,
         final List<Token> tokens,
         final String indent,
@@ -380,7 +401,7 @@ public class TypeScriptGenerator implements CodeGenerator
             final List<Token> varData = new ArrayList<>();
             i = collectVarData(tokens, i, varData);
 
-            generateGroupDecoderProperty(sb, groupName, groupToken, indent, isSubGroup);
+            generateGroupDecoderProperty(sbParentClass, groupName, groupToken, indent, isSubGroup);
             generateTypeJavadoc(sb, indent + INDENT, groupToken);
 
             if (shouldGenerateGroupOrderAnnotation)
@@ -390,18 +411,23 @@ public class TypeScriptGenerator implements CodeGenerator
             generateGroupDecoderClassHeader(sb, groupName, outerClassName, tokens, groups, index, indent + INDENT);
 
             generateDecoderFields(sb, fields, indent + INDENT);
-            generateDecoderGroups(sb, outerClassName, groups, indent + INDENT, true);
+            final StringBuilder groupClassDeclarationStringBuilder = new StringBuilder();
+            generateDecoderGroups(groupClassDeclarationStringBuilder, sb, outerClassName,
+                groups, indent + INDENT, true);
             generateDecoderVarData(sb, varData, indent + INDENT);
 
             appendGroupInstanceDecoderDisplay(sb, fields, groups, varData, indent + INDENT, outerClassName);
             generateMessageLength(sb, groupName, false, groups, varData, indent + INDENT);
 
             sb.append(indent).append("    }\n");
+
+            sb.append(groupClassDeclarationStringBuilder);
         }
     }
 
     private void generateEncoderGroups(
         final StringBuilder sb,
+        final StringBuilder sbParentClass,
         final String outerClassName,
         final List<Token> tokens,
         final String indent,
@@ -432,7 +458,7 @@ public class TypeScriptGenerator implements CodeGenerator
             final List<Token> varData = new ArrayList<>();
             i = collectVarData(tokens, i, varData);
 
-            generateGroupEncoderProperty(sb, groupName, groupToken, indent, isSubGroup);
+            generateGroupEncoderProperty(sbParentClass, groupName, groupToken, indent, isSubGroup);
             generateTypeJavadoc(sb, indent + INDENT, groupToken);
 
             if (shouldGenerateGroupOrderAnnotation)
@@ -442,10 +468,14 @@ public class TypeScriptGenerator implements CodeGenerator
             generateGroupEncoderClassHeader(sb, groupName, outerClassName, tokens, groups, index, indent + INDENT);
 
             generateEncoderFields(sb, groupClassName, fields, indent + INDENT);
-            generateEncoderGroups(sb, outerClassName, groups, indent + INDENT, true);
+            final StringBuilder groupClassDeclarationStringBuilder = new StringBuilder();
+            generateEncoderGroups(groupClassDeclarationStringBuilder, sb,
+                outerClassName, groups, indent + INDENT, true);
             generateEncoderVarData(sb, groupClassName, varData, indent + INDENT);
 
             sb.append(indent).append("    }\n");
+
+            sb.append(groupClassDeclarationStringBuilder);
         }
     }
 
@@ -482,35 +512,35 @@ public class TypeScriptGenerator implements CodeGenerator
             indent,
             dimensionHeaderLen);
 
-        final String blockLenCast = PrimitiveType.UINT32 == blockLengthType ? "(int)" : "";
-        final String numInGroupCast = PrimitiveType.UINT32 == numInGroupType ? "(int)" : "";
+        final String blockLenCast = PrimitiveType.UINT32 == blockLengthType ? "<number>" : "";
+        final String numInGroupCast = PrimitiveType.UINT32 == numInGroupType ? "<number>" : "";
 
         sb.append("\n")
             .append(indent).append("    public wrap(buffer: ").append(readOnlyBuffer).append(")\n")
             .append(indent).append("    {\n")
-            .append(indent).append("        if (buffer != this.buffer)\n")
+            .append(indent).append("        if (buffer != this._buffer)\n")
             .append(indent).append("        {\n")
-            .append(indent).append("            this.buffer = buffer;\n")
+            .append(indent).append("            this._buffer = buffer;\n")
             .append(indent).append("        }\n\n")
-            .append(indent).append("        let index: number = 0;\n")
+            .append(indent).append("        this._index = 0;\n")
             .append(indent).append("        let limit = this._parentMessage.getLimit();\n")
-            .append(indent).append("        this._parentMessage.setLimit(limit + ")
-            .append(parentMessageClassName).append(".HEADER_SIZE);\n")
+            .append(indent).append("        this._parentMessage.setLimit(")
+            .append("limit + ").append(className).append(".HEADER_SIZE);\n")
             .append(indent).append("        this._blockLength = ")
             .append(blockLenCast).append(blockLengthGet).append(";\n")
-            .append(indent).append("        count = ").append(numInGroupCast).append(numInGroupGet).append(";\n")
+            .append(indent).append("        this._count = ").append(numInGroupCast).append(numInGroupGet).append(";\n")
             .append(indent).append("    }\n");
 
         sb.append("\n")
             .append(indent).append("    public ").append("next(): ").append(className).append("\n")
             .append(indent).append("    {\n")
-            .append(indent).append("        if (index >= count)\n")
+            .append(indent).append("        if (this._index >= this._count)\n")
             .append(indent).append("        {\n")
             .append(indent).append("            throw new Error(\"No such element\");\n")
             .append(indent).append("        }\n\n")
             .append(indent).append("        this._offset = this._parentMessage.getLimit();\n")
-            .append(indent).append("        this._parentMessage.setLimit(this._offset + this.blockLength);\n")
-            .append(indent).append("        ++index;\n\n")
+            .append(indent).append("        this._parentMessage.setLimit(this._offset + this._blockLength);\n")
+            .append(indent).append("        ++this._index;\n\n")
             .append(indent).append("        return this;\n")
             .append(indent).append("    }\n");
 
@@ -525,7 +555,7 @@ public class TypeScriptGenerator implements CodeGenerator
         sb.append("\n")
             .append(indent).append("    public static sbeHeaderSize() : number\n")
             .append(indent).append("    {\n")
-            .append(indent).append("        return " + parentMessageClassName + ".HEADER_SIZE;\n")
+            .append(indent).append("        return " + className + ".HEADER_SIZE;\n")
             .append(indent).append("    }\n");
 
         sb.append("\n")
@@ -543,7 +573,7 @@ public class TypeScriptGenerator implements CodeGenerator
             .append(indent).append("    {\n")
             .append(indent).append("        return this._count;\n")
             .append(indent).append("    }\n\n")
-            .append(indent).append("    public iterator(): Iterator<").append(className).append(">\n")
+            .append(indent).append("    public [Symbol.iterator]()\n")
             .append(indent).append("    {\n")
             .append(indent).append("        return this;\n")
             .append(indent).append("    }\n\n")
@@ -591,9 +621,11 @@ public class TypeScriptGenerator implements CodeGenerator
         final PrimitiveType numInGroupTypeCast = PrimitiveType.UINT32 == numInGroupType ?
             PrimitiveType.INT32 : numInGroupType;
         final String numInGroupOffset = "limit + " + numInGroupToken.offset();
-        final String numInGroupValue = "count";
+        final String numInGroupValue = "this._count";
         final String numInGroupPut = generatePut(
             numInGroupTypeCast, numInGroupOffset, numInGroupValue, byteOrderString(numInGroupToken.encoding()));
+
+        final String groupClassName = encoderName(groupName);
 
         new Formatter(sb).format("\n" +
             ind + "    public wrap(buffer: %2$s, count: number)\n" +
@@ -606,11 +638,11 @@ public class TypeScriptGenerator implements CodeGenerator
             ind + "        {\n" +
             ind + "            this._buffer = buffer;\n" +
             ind + "        }\n\n" +
-            ind + "        this._index: number = 0;\n" +
+            ind + "        this._index = 0;\n" +
             ind + "        this._count = count;\n" +
             ind + "        let limit = this._parentMessage.getLimit();\n" +
             ind + "        this._initialLimit = limit;\n" +
-            ind + "        this._parentMessage.getLimit(limit + " + parentMessageClassName + ".HEADER_SIZE);\n" +
+            ind + "        this._parentMessage.setLimit(limit + " + groupClassName + ".HEADER_SIZE);\n" +
             ind + "        %5$s;\n" +
             ind + "        %6$s;\n" +
             ind + "    }\n",
@@ -629,12 +661,13 @@ public class TypeScriptGenerator implements CodeGenerator
             .append(ind).append("            throw new Error(\"NoSuchElementException\");\n")
             .append(ind).append("        }\n\n")
             .append(ind).append("        this._offset = this._parentMessage.getLimit();\n")
-            .append(ind).append("        this._parentMessage.setLimit(this._offset + this.sbeBlockLength());\n")
+            .append(ind).append("        this._parentMessage.setLimit(this._offset + ")
+            .append(encoderName(groupName)).append(".sbeBlockLength());\n")
             .append(ind).append("        ++this._index;\n\n")
             .append(ind).append("        return this;\n")
             .append(ind).append("    }\n");
 
-        final String countOffset = "initialLimit + " + numInGroupToken.offset();
+        final String countOffset = "this._initialLimit + " + numInGroupToken.offset();
         final String resetCountPut = generatePut(
             numInGroupTypeCast, countOffset, numInGroupValue, byteOrderString(numInGroupToken.encoding()));
 
@@ -657,7 +690,7 @@ public class TypeScriptGenerator implements CodeGenerator
         sb.append("\n")
             .append(ind).append("    public static sbeHeaderSize(): number\n")
             .append(ind).append("    {\n")
-            .append(ind).append("        return " + parentMessageClassName + ".HEADER_SIZE;\n")
+            .append(ind).append("        return " + groupClassName + ".HEADER_SIZE;\n")
             .append(ind).append("    }\n");
 
         sb.append("\n")
@@ -683,12 +716,12 @@ public class TypeScriptGenerator implements CodeGenerator
         final String className = formatClassName(groupName);
 
         new Formatter(sb).format("\n" +
-            indent + "public static final class %1$s\n" +
-            indent + "    implements Iterable<%1$s>, Iterator<%1$s>\n" +
+            indent + "export class %1$s\n" +
+            indent + "    implements agrona.Iterator<%1$s>\n" +
             indent + "{\n" +
-            indent + "    public static final int HEADER_SIZE = %2$d;\n" +
-            indent + "    private final %3$s _parentMessage;\n" +
-            indent + "    private %4$s _buffer;\n" +
+            indent + "    public static HEADER_SIZE: number = %2$d;\n" +
+            indent + "    private _parentMessage: %3$s;\n" +
+            indent + "    private _buffer?: %4$s  = undefined;\n" +
             indent + "    private _count: number = 0;\n" +
             indent + "    private _index: number = 0;\n" +
             indent + "    private _offset: number = 0;\n" +
@@ -702,13 +735,13 @@ public class TypeScriptGenerator implements CodeGenerator
         {
             final String type = formatClassName(decoderName(subGroupName));
             final String field = formatPropertyName(subGroupName);
-            sb.append(indent).append("    private final ").append(type).append(" ").append(field).append(";\n");
+            sb.append(indent).append("    private _").append(field).append(": ").append(type).append(";\n");
         }
 
         sb
             .append("\n")
             .append(indent).append("    ")
-            .append(className).append("(final ").append(parentMessageClassName).append(" parentMessage)\n")
+            .append("constructor(parentMessage: ").append(parentMessageClassName).append(")\n")
             .append(indent).append("    {\n")
             .append(indent).append("        this._parentMessage = parentMessage;\n");
 
@@ -717,11 +750,77 @@ public class TypeScriptGenerator implements CodeGenerator
             final String type = formatClassName(decoderName(subGroupName));
             final String field = formatPropertyName(subGroupName);
             sb
-                .append(indent).append("        ")
+                .append(indent).append("        this._")
                 .append(field).append(" = new ").append(type).append("(parentMessage);\n");
         }
 
         sb.append(indent).append("    }\n");
+
+        sb.append("\n")
+            .append(indent).append("    public parentMessage(): ").append(parentMessageClassName).append("\n")
+            .append(indent).append("    {\n")
+            .append(indent).append("        return this._parentMessage;\n")
+            .append(indent).append("    }\n");
+
+        generateGroupBufferMethod(sb, readOnlyBuffer);
+        generateGroupOffsetGetAndSet(sb);
+        generateGroupIndexGetAndSet(sb);
+        generateGroupCountGetAndSet(sb);
+    }
+
+    private void generateGroupBufferMethod(final StringBuilder sb, final String bufferClassName)
+    {
+        sb.append("\n" +
+            "       private buffer(): ").append(bufferClassName).append("\n" +
+            "       {\n" +
+            "           if (this._buffer === undefined)\n" +
+            "           {\n" +
+            "               throw new Error(\"buffer is undefined\");\n" +
+            "           }\n" +
+            "           return this._buffer;\n" +
+            "       }\n");
+    }
+
+    private void generateGroupOffsetGetAndSet(final StringBuilder sb)
+    {
+        sb.append("\n" +
+            "       public getOffset(): number\n" +
+            "       {\n" +
+            "           return this._offset;\n" +
+            "       }\n");
+        sb.append("\n" +
+            "       public setOffset(value: number)\n" +
+            "       {\n" +
+            "           this._offset = value;\n" +
+            "       }\n");
+    }
+
+    private void generateGroupIndexGetAndSet(final StringBuilder sb)
+    {
+        sb.append("\n" +
+            "       public getIndex(): number\n" +
+            "       {\n" +
+            "           return this._index;\n" +
+            "       }\n");
+        sb.append("\n" +
+            "       public setIndex(value: number)\n" +
+            "       {\n" +
+            "           this._index = value;\n" +
+            "       }\n");
+    }
+
+    private void generateGroupCountGetAndSet(final StringBuilder sb)
+    {
+        sb.append("\n" +
+            "       public getCount(): number\n" +
+            "       {\n" +
+            "           return this._count;\n" +
+            "       }\n");
+        sb.append("\n" +
+            "       public setCount(value: number)\n" +
+            "       {\n" +
+            "           this._count = value;\n" +
+            "       }\n");
     }
 
     private void generateGroupEncoderClassDeclaration(
@@ -735,11 +834,11 @@ public class TypeScriptGenerator implements CodeGenerator
         final String className = encoderName(groupName);
 
         new Formatter(sb).format("\n" +
-            indent + "public static final class %1$s\n" +
+            indent + "export class %1$s\n" +
             indent + "{\n" +
-            indent + "    public static final int HEADER_SIZE = %2$d;\n" +
-            indent + "    private final %3$s _parentMessage;\n" +
-            indent + "    private %4$s _buffer;\n" +
+            indent + "    public static HEADER_SIZE: number = %2$d;\n" +
+            indent + "    private _parentMessage: %3$s;\n" +
+            indent + "    private _buffer?: %4$s = undefined;\n" +
             indent + "    private _count: number = 0;\n" +
             indent + "    private _index: number = 0;\n" +
             indent + "    private _offset: number = 0;\n" +
@@ -753,13 +852,13 @@ public class TypeScriptGenerator implements CodeGenerator
         {
             final String type = encoderName(subGroupName);
             final String field = formatPropertyName(subGroupName);
-            sb.append(indent).append("    private final ").append(type).append(" ").append(field).append(";\n");
+            sb.append(indent).append("    private _").append(field).append(": ").append(type).append(";\n");
         }
 
         sb
             .append("\n")
             .append(indent).append("    ")
-            .append(className).append("(final ").append(parentMessageClassName).append(" parentMessage)\n")
+            .append("constructor(parentMessage: ").append(parentMessageClassName).append(")\n")
             .append(indent).append("    {\n")
             .append(indent).append("        this._parentMessage = parentMessage;\n");
 
@@ -768,11 +867,13 @@ public class TypeScriptGenerator implements CodeGenerator
             final String type = encoderName(subGroupName);
             final String field = formatPropertyName(subGroupName);
             sb
-                .append(indent).append("        ")
+                .append(indent).append("        this._")
                 .append(field).append(" = new ").append(type).append("(parentMessage);\n");
         }
 
         sb.append(indent).append("    }\n");
+
+        generateGroupBufferMethod(sb, mutableBuffer);
     }
 
     private static void generateGroupDecoderProperty(
@@ -805,18 +906,19 @@ public class TypeScriptGenerator implements CodeGenerator
         new Formatter(sb).format("\n" +
             indent + "    public static %sSinceVersion(): number\n" +
             indent + "    {\n" +
-            indent + "        return %d" + "n;\n" +
+            indent + "        return %d" + ";\n" +
             indent + "    }\n",
             formatPropertyName(groupName),
             token.version());
 
         final String actingVersionGuard = token.version() == 0 ?
             "" :
-            indent + "        if (parentMessage._actingVersion < " + token.version() + ")\n" +
+            indent + "        if (this._" + propertyName + ".parentMessage().actingVersion()" +
+            " < " + token.version() + ")\n" +
             indent + "        {\n" +
-            indent + "            " + propertyName + ".count = 0;\n" +
-            indent + "            " + propertyName + ".index = 0;\n" +
-            indent + "            return " + propertyName + ";\n" +
+            indent + "            this._" + propertyName + ".setCount(0);\n" +
+            indent + "            this._" + propertyName + ".setIndex(0);\n" +
+            indent + "            return this._" + propertyName + ";\n" +
             indent + "        }\n\n";
 
         generateFlyweightPropertyJavadoc(sb, indent + INDENT, token, className);
@@ -824,11 +926,11 @@ public class TypeScriptGenerator implements CodeGenerator
             indent + "    public %2$s(): %1$s\n" +
             indent + "    {\n" +
             "%3$s" +
-            indent + "        %2$s.wrap(this._buffer);\n" +
-            indent + "        return %2$s;\n" +
+            indent + "        this._%2$s.wrap(this.buffer());\n" +
+            indent + "        return this._%2$s;\n" +
             indent + "    }\n",
+            className,
             propertyName,
-            CODEC_IMPORT_PATH + className,
             actingVersionGuard);
     }
 
@@ -863,8 +965,8 @@ public class TypeScriptGenerator implements CodeGenerator
         new Formatter(sb).format("\n" +
             indent + "    public %2$sCount(count: number): %1$s\n" +
             indent + "    {\n" +
-            indent + "        %2$s.wrap(this._buffer, count);\n" +
-            indent + "        return %2$s;\n" +
+            indent + "        this._%2$s.wrap(this.buffer(), count);\n" +
+            indent + "        return this._%2$s;\n" +
             indent + "    }\n",
             className,
             propertyName);
@@ -1036,7 +1138,7 @@ public class TypeScriptGenerator implements CodeGenerator
                 formatPropertyName(propertyName),
                 generateStringNotPresentCondition(token.version(), indent),
                 sizeOfLengthField,
-                PrimitiveType.UINT32 == lengthType ? "<number>" : "", //TODO: check if this is correct
+                PrimitiveType.UINT32 == lengthType ? "<number>" : "",
                 generateGet(lengthType, "limit", byteOrderStr),
                 charset(characterEncoding));
 
@@ -1058,7 +1160,7 @@ public class TypeScriptGenerator implements CodeGenerator
                     Generators.toUpperFirstChar(propertyName),
                     generateStringNotPresentConditionForAppendable(token.version(), indent),
                     sizeOfLengthField,
-                    PrimitiveType.UINT32 == lengthType ? "<number>" : "", //todo: check if this is correct
+                    PrimitiveType.UINT32 == lengthType ? "<number>" : "",
                     generateGet(lengthType, "limit", byteOrderStr));
             }
         }
@@ -1087,7 +1189,7 @@ public class TypeScriptGenerator implements CodeGenerator
             readOnlyBuffer,
             generateWrapFieldNotPresentCondition(token.version(), indent),
             sizeOfLengthField,
-            PrimitiveType.UINT32 == lengthType ? "<number>" : "", //todo: check if this is correct
+            PrimitiveType.UINT32 == lengthType ? "<number>" : "",
             generateGet(lengthType, "limit", byteOrderStr));
     }
 
@@ -1169,7 +1271,7 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "        this.buffer().putStringWithoutLengthAscii(limit + headerLength, value);\n\n" +
                 indent + "        return this;\n" +
                 indent + "    }\n",
-                CODEC_IMPORT_PATH + className,
+                className,
                 formatPropertyName(propertyName),
                 maxLengthValue,
                 sizeOfLengthField,
@@ -1251,7 +1353,7 @@ public class TypeScriptGenerator implements CodeGenerator
             exchangeType,
             generateArrayFieldNotPresentCondition(token.version(), indent),
             sizeOfLengthField,
-            PrimitiveType.UINT32 == lengthType ? "<number>" : "", //todo: check if this is correct
+            PrimitiveType.UINT32 == lengthType ? "<number>" : "",
             generateGet(lengthType, "limit", byteOrderStr));
     }
 
@@ -1373,7 +1475,6 @@ public class TypeScriptGenerator implements CodeGenerator
 
             final List<Token> valuesList = tokens.subList(1, tokens.size() - 1);
             out.append(generateEnumValues(valuesList, generateLiteral(encoding.primitiveType(), nullVal)));
-            out.append(generateEnumBody(enumToken, enumName));
 
             out.append("}\n");
 
@@ -1647,30 +1748,6 @@ public class TypeScriptGenerator implements CodeGenerator
         return sb;
     }
 
-    private CharSequence generateEnumBody(final Token token, final String enumName)
-    {
-        final String javaEncodingType = primitiveTypeName(token);
-
-        //todo remove
-        // return
-        //     "    private value: " + javaEncodingType + ";\n\n" +
-        //     "    " + enumName + "(value: " + javaEncodingType + ")\n" +
-        //     "    {\n" +
-        //     "        this.value = value;\n" +
-        //     "    }\n\n" +
-        //     "    /**\n" +
-        //     "     * The raw encoded value in the Java type representation.\n" +
-        //     "     *\n" +
-        //     "     * @return the raw value encoded.\n" +
-        //     "     */\n" +
-        //     "    public value(): " + javaEncodingType + "\n" +
-        //     "    {\n" +
-        //     "        return value;\n" +
-        //     "    }\n";
-
-        return "";
-    }
-
     private CharSequence generateEnumLookupMethod(final List<Token> tokens, final String enumName, final String nullVal)
     {
         final StringBuilder sb = new StringBuilder();
@@ -1831,23 +1908,6 @@ public class TypeScriptGenerator implements CodeGenerator
                 --level;
             }
         }
-
-//todo: check how to generate this in TS
-        // if (!groupClassNames.isEmpty())
-        // {
-        //     out.append(indent).append("@uk.co.real_logic.sbe.codec.java.GroupOrder({\n");
-        //     int i = 0;
-        //     for (final String name : groupClassNames)
-        //     {
-        //         out.append(indent).append(INDENT).append(className).append('.').append(name).append(".class");
-        //         if (++i < groupClassNames.size())
-        //         {
-        //             out.append(",\n");
-        //         }
-        //     }
-
-        //     out.append("})");
-        // }
     }
 
     private static CharSequence generateDeclaration(
@@ -1876,9 +1936,6 @@ public class TypeScriptGenerator implements CodeGenerator
                 "/**\n" +
                 " * ").append(ir.description()).append("\n")
                 .append(" */\n");
-                // todo: decide if it should be removed
-                // +
-                //"package ").append(ir.applicableNamespace()).append(";\n");
         }
     }
 
@@ -1887,8 +1944,6 @@ public class TypeScriptGenerator implements CodeGenerator
         try (Writer out = outputManager.createOutput(META_ATTRIBUTE_ENUM))
         {
             out.append("/* Generated SBE (Simple Binary Encoding) message codec. */\n" +
-                //+
-                //"package ").append(ir.applicableNamespace()).append(";\n\n")
                 "/**\n" +
                 " * Meta attribute enum for selecting a particular meta attribute value.\n" +
                 " */\n" +
@@ -2066,7 +2121,7 @@ public class TypeScriptGenerator implements CodeGenerator
             indent + "    }\n\n",
             formatPropertyName(propertyName),
             javaTypeName,
-            CODEC_IMPORT_PATH + formatClassName(containingClassName),
+            formatClassName(containingClassName),
             generatePut(encoding.primitiveType(), "this._offset + " + offset, "value", byteOrderStr));
     }
 
@@ -2080,7 +2135,7 @@ public class TypeScriptGenerator implements CodeGenerator
         return
             indent + "        if (this._parentMessage._actingVersion < " + sinceVersion + ")\n" +
             indent + "        {\n" +
-            indent + "            this.wrapBuffer.wrap(this._buffer, this._offset, 0);\n" +
+            indent + "            this.wrapBuffer.wrap(this.buffer(), this._offset, 0);\n" +
             indent + "            return;\n" +
             indent + "        }\n\n";
     }
@@ -2260,7 +2315,7 @@ public class TypeScriptGenerator implements CodeGenerator
                     indent + "            {\n" +
                     indent + "                value.push(c > 127 ? '?'.charCodeAt(0) : c);\n" +
                     indent + "            }\n" +
-                    indent + "            catch (ex: any)\n" + //todo: check if this is the right exception
+                    indent + "            catch (ex: any)\n" +
                     indent + "            {\n" +
                     indent + "                throw new Error(ex);\n" +
                     indent + "            }\n" +
@@ -2306,7 +2361,7 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "    public wrap%s(wrapBuffer: %s)\n" +
                 indent + "    {\n" +
                 "%s" +
-                indent + "        wrapBuffer.wrap(this._buffer, this._offset + %d, %d);\n" +
+                indent + "        wrapBuffer.wrap(this.buffer(), this._offset + %d, %d);\n" +
                 indent + "    }\n",
                 Generators.toUpperFirstChar(propertyName),
                 readOnlyBuffer,
@@ -2331,7 +2386,6 @@ public class TypeScriptGenerator implements CodeGenerator
 
     private String byteOrderString(final Encoding encoding)
     {
-        //todo: convert to TS
         return sizeOfPrimitive(encoding) == 1 ? "" : ", agrona.ByteOrder." + encoding.byteOrder();
     }
 
@@ -2840,7 +2894,7 @@ public class TypeScriptGenerator implements CodeGenerator
             "    public static SCHEMA_ID: %5$s = %6$s;\n" +
             "    public static SCHEMA_VERSION: %7$s = %8$s;\n" +
             "    public static SEMANTIC_VERSION: string = \"%19$s\";\n" +
-            "    public static BYTE_ORDER: agrona.ByteOrder = agrona.ByteOrder.%14$s;\n\n" + //todo: convert to TS
+            "    public static BYTE_ORDER: agrona.ByteOrder = agrona.ByteOrder.%14$s;\n\n" +
             "    private _parentMessage: %9$s = this;\n" +
             "    private _buffer?: %11$s = undefined;\n" +
             "    private _initialOffset: number = 0;\n" +
@@ -3309,7 +3363,6 @@ public class TypeScriptGenerator implements CodeGenerator
             propertyName);
     }
 
-//todo: convert to ts
     private String generateGet(final PrimitiveType type, final String index, final String byteOrder)
     {
         switch (type)
@@ -3350,7 +3403,6 @@ public class TypeScriptGenerator implements CodeGenerator
         throw new IllegalArgumentException("primitive type not supported: " + type);
     }
 
-//todo: convert to ts
     private String generatePut(
         final PrimitiveType type, final String index, final String value, final String byteOrder)
     {
@@ -3466,7 +3518,6 @@ public class TypeScriptGenerator implements CodeGenerator
         throw new IllegalArgumentException("primitive type not supported: " + type);
     }
 
-//todo: convert to TS
     private String generateChoicePut(final PrimitiveType type, final String bitIdx, final String byteOrder)
     {
         switch (type)
@@ -3502,7 +3553,6 @@ public class TypeScriptGenerator implements CodeGenerator
         throw new IllegalArgumentException("primitive type not supported: " + type);
     }
 
-//todo: convert to TS
     private String generateStaticChoicePut(final PrimitiveType type, final String bitIdx)
     {
         switch (type)
@@ -3762,9 +3812,9 @@ public class TypeScriptGenerator implements CodeGenerator
 
             append(
                 sb, indent, "builder.append(\"" + groupName + Separator.KEY_VALUE + Separator.BEGIN_GROUP + "\");");
-            append(sb, indent, "let " + groupName + "OriginalOffset: number = " + groupName + ".offset;");
-            append(sb, indent, "let " + groupName + "OriginalIndex: number = " + groupName + ".index;");
             append(sb, indent, "let " + groupName + ":" + groupDecoderName + " = this." + groupName + "();");
+            append(sb, indent, "let " + groupName + "OriginalOffset: number = " + groupName + ".getOffset();");
+            append(sb, indent, "let " + groupName + "OriginalIndex: number = " + groupName + ".getIndex();");
 
             append(sb, indent, "if (" + groupName + ".count() > 0)");
             append(sb, indent, "{");
@@ -3776,8 +3826,8 @@ public class TypeScriptGenerator implements CodeGenerator
             append(sb, indent, "    builder.setLength(builder.length() - 1);");
             append(sb, indent, "}");
 
-            append(sb, indent, groupName + ".offset = " + groupName + "OriginalOffset;");
-            append(sb, indent, groupName + ".index = " + groupName + "OriginalIndex;");
+            append(sb, indent, groupName + ".setOffset(" + groupName + "OriginalOffset);");
+            append(sb, indent, groupName + ".setIndex(" + groupName + "OriginalIndex);");
             Separator.END_GROUP.appendToGeneratedBuilder(sb, indent);
 
 
