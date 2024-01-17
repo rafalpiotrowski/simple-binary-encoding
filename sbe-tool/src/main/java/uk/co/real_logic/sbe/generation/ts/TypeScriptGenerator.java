@@ -2763,7 +2763,7 @@ public class TypeScriptGenerator implements CodeGenerator
             "    public buffer(): %3$s\n" +
             "    {\n" +
             "        if (this._buffer === undefined) {\n" +
-            "           throw new Error(\"buffer is undefined\");\n" +
+            "            throw new Error(\"buffer is undefined\");\n" +
             "        }\n" +
             "        return this._buffer;\n" +
             "    }\n\n" +
@@ -2925,7 +2925,7 @@ public class TypeScriptGenerator implements CodeGenerator
             "    public buffer(): %11$s\n" +
             "    {\n" +
             "        if (this._buffer === undefined) {\n" +
-            "           throw new Error(\"buffer is undefined\");\n" +
+            "            throw new Error(\"buffer is undefined\");\n" +
             "        }\n" +
             "        return this._buffer;\n" +
             "    }\n\n" +
@@ -3592,7 +3592,7 @@ public class TypeScriptGenerator implements CodeGenerator
         append(sb, INDENT, "        return builder;");
         append(sb, INDENT, "    }");
         sb.append('\n');
-        append(sb, INDENT, "    let decoder: codecs." + decoderName + " = new codecs." + decoderName + "();");
+        append(sb, INDENT, "    const decoder: codecs." + decoderName + " = new codecs." + decoderName + "();");
         append(sb, INDENT, "    decoder.wrap(this._buffer, this._initialOffset, ");
         append(sb, INDENT, "        codecs." + decoderName + ".BLOCK_LENGTH, ");
         append(sb, INDENT, "        codecs." + decoderName + ".SCHEMA_VERSION);");
@@ -3614,7 +3614,7 @@ public class TypeScriptGenerator implements CodeGenerator
         append(sb, INDENT, "        return builder;");
         append(sb, INDENT, "    }");
         sb.append('\n');
-        append(sb, INDENT, "    let decoder: codecs." + decoderName + " = new codecs." + decoderName + "();");
+        append(sb, INDENT, "    const decoder: codecs." + decoderName + " = new codecs." + decoderName + "();");
         append(sb, INDENT, "    decoder.wrap(this._buffer, this._offset);");
         sb.append('\n');
         append(sb, INDENT, "    return decoder.appendTo(builder);");
@@ -3720,23 +3720,23 @@ public class TypeScriptGenerator implements CodeGenerator
         append(sb, INDENT, "    let originalLimit: number = this.getLimit();");
         append(sb, INDENT, "    this.setLimit(this._initialOffset + this._actingBlockLength);");
         append(sb, INDENT, "    builder.append(\"[" + name + "](sbeTemplateId=\");");
-        append(sb, INDENT, "    builder.append_number(" + decoderName + ".TEMPLATE_ID);");
+        append(sb, INDENT, "    builder.append(" + decoderName + ".TEMPLATE_ID);");
         append(sb, INDENT, "    builder.append(\"|sbeSchemaId=\");");
-        append(sb, INDENT, "    builder.append_number(" + decoderName + ".SCHEMA_ID);");
+        append(sb, INDENT, "    builder.append(" + decoderName + ".SCHEMA_ID);");
         append(sb, INDENT, "    builder.append(\"|sbeSchemaVersion=\");");
         append(sb, INDENT, "    if (this._parentMessage.actingVersion() != " + decoderName + ".SCHEMA_VERSION)");
         append(sb, INDENT, "    {");
-        append(sb, INDENT, "        builder.append_number(this._parentMessage.actingVersion());");
+        append(sb, INDENT, "        builder.append(this._parentMessage.actingVersion());");
         append(sb, INDENT, "        builder.append('/');");
         append(sb, INDENT, "    }");
-        append(sb, INDENT, "    builder.append_number(" + decoderName + ".SCHEMA_VERSION);");
+        append(sb, INDENT, "    builder.append(" + decoderName + ".SCHEMA_VERSION);");
         append(sb, INDENT, "    builder.append(\"|sbeBlockLength=\");");
         append(sb, INDENT, "    if (this._actingBlockLength != " + decoderName + ".BLOCK_LENGTH)");
         append(sb, INDENT, "    {");
-        append(sb, INDENT, "        builder.append_number(this._actingBlockLength);");
+        append(sb, INDENT, "        builder.append(this._actingBlockLength);");
         append(sb, INDENT, "        builder.append('/');");
         append(sb, INDENT, "    }");
-        append(sb, INDENT, "    builder.append_number(" + decoderName + ".BLOCK_LENGTH);");
+        append(sb, INDENT, "    builder.append(" + decoderName + ".BLOCK_LENGTH);");
         append(sb, INDENT, "    builder.append(\"):\");");
         appendDecoderDisplay(sb, tokens, groups, varData, INDENT + INDENT, decoderName);
         sb.append('\n');
@@ -3851,7 +3851,7 @@ public class TypeScriptGenerator implements CodeGenerator
             if (null == characterEncoding)
             {
                 final String name = Generators.toUpperFirstChar(varDataToken.name());
-                append(sb, indent, "builder.append_number(skip" + name + "()).append(\" bytes of raw data\");");
+                append(sb, indent, "builder.append(skip" + name + "()).append(\" bytes of raw data\");");
             }
             else
             {
@@ -3932,7 +3932,7 @@ public class TypeScriptGenerator implements CodeGenerator
                 break;
 
             case BEGIN_ENUM:
-                append(sb, indent, "builder.append_number(this." + fieldName + "());");
+                append(sb, indent, "builder.append(this." + fieldName + "());");
                 break;
 
             case BEGIN_SET:
@@ -3989,7 +3989,7 @@ public class TypeScriptGenerator implements CodeGenerator
         append(sb, INDENT, "        return \"\";");
         append(sb, INDENT, "    }");
         sb.append('\n');
-        append(sb, INDENT, "    let decoder: " + CODEC_IMPORT_PATH + decoderName +
+        append(sb, INDENT, "    const decoder: " + CODEC_IMPORT_PATH + decoderName +
             " = new " + CODEC_IMPORT_PATH + decoderName + "();");
         append(sb, INDENT, "    decoder.wrap(this._buffer, this._initialOffset, ");
         append(sb, INDENT, "        this._actingBlockLength, this._actingVersion);");
