@@ -1779,7 +1779,7 @@ public class TypeScriptGenerator implements CodeGenerator
         sb.append("export function get").append(enumName).append("Value(value: number): ")
             .append(enumName).append(" {\n");
 
-        sb.append("    let result = get").append(enumName).append("[value];\n");
+        sb.append("    const result = get").append(enumName).append("[value];\n");
         sb.append("    if (result === undefined) {\n");
         if (shouldDecodeUnknownEnumValues)
         {
@@ -1787,7 +1787,7 @@ public class TypeScriptGenerator implements CodeGenerator
         }
         else
         {
-            sb.append("         throw new Error(`").append(enumName + "not found for value: ${value}`);\n");
+            sb.append("         throw new Error(`").append(enumName + " not found for value: ${value}`);\n");
         }
         sb.append("    }\n");
         sb.append("    return result;\n");

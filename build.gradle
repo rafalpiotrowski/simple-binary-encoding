@@ -622,6 +622,68 @@ tasks.register('runRustTests', Exec) {
 }
 
 /*
+ * TypeScript codec targets used for testing, benchmarking etc. 
+ */
+tasks.register('generateTypeScriptExamples', JavaExec) {
+    mainClass.set('uk.co.real_logic.sbe.SbeTool')
+    classpath = project(':sbe-all').sourceSets.main.runtimeClasspath
+    systemProperties(
+            'sbe.output.dir': 'generated/ts',
+            'sbe.xinclude.aware': 'true',
+            'sbe.target.language': 'TypeScript',
+            'sbe.target.namespace': 'examples')
+    args = ['sbe-samples/src/main/resources/example-schema.xml',
+            'sbe-samples/src/main/resources/example-extension-schema.xml',
+            'sbe-benchmarks/src/main/resources/car.xml',
+            'sbe-benchmarks/src/main/resources/fix-message-samples.xml'
+    ]
+}
+
+tasks.register('generateTypeScriptTestCodecs', JavaExec) {
+    mainClass.set('uk.co.real_logic.sbe.SbeTool')
+    classpath = project(':sbe-all').sourceSets.main.runtimeClasspath
+    systemProperties(
+            'sbe.output.dir': 'generated/ts',
+            'sbe.xinclude.aware': 'true',
+            'sbe.target.language': 'TypeScript',
+            'sbe.validation.xsd': validationXsdPath)
+    args = ['sbe-tool/src/test/resources/issue435.xml',
+            'sbe-tool/src/test/resources/issue895.xml',
+            'sbe-tool/src/test/resources/example-bigendian-test-schema.xml',
+            'sbe-tool/src/test/resources/nested-composite-name.xml',
+    ]
+}
+
+tasks.register('generateTypeScriptCarExampleDataFile', JavaExec) {
+    mainClass.set('uk.co.real_logic.sbe.examples.ExampleUsingGeneratedStub')
+    classpath = project(':sbe-samples').sourceSets.main.runtimeClasspath
+    systemProperties('sbe.encoding.filename': 'ts/car_example_baseline_data.sbe')
+    args = []
+    standardOutput = new ByteArrayOutputStream()
+}
+
+tasks.register('generateTypeScriptCarExampleExtensionDataFile', JavaExec) {
+    mainClass.set('uk.co.real_logic.sbe.examples.ExampleUsingGeneratedStubExtension')
+    classpath = project(':sbe-samples').sourceSets.main.runtimeClasspath
+    systemProperties('sbe.encoding.filename': 'ts/car_example_extension_data.sbe')
+    args = []
+    standardOutput = new ByteArrayOutputStream()
+}
+
+tasks.register('generateTypeScriptCodecs') {
+    description = 'Generate TypeScript test codecs'
+    dependsOn 'generateTypeScriptExamples', 'generateTypeScriptTestCodecs',
+            'generateTypeScriptCarExampleDataFile', 'generateTypeScriptCarExampleExtensionDataFile'
+}
+
+tasks.register('runTypeScriptTests', Exec) {
+    workingDir = './ts'
+    executable = 'npm'
+    args = ['run', 'test']
+    dependsOn 'generateTypeScriptCodecs'
+}
+
+/*
  * Golang codec targets used for testing, benchmarking etc. We have
  * multiple targets as:
  *  *) some of the test files generate warnings from the xsd so we don't

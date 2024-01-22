@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "jest"
+    "test": "jest --passWithNoTests"
   },
   "author": "Rafał Piotrowski",
   "license": "Apache-2.0",
