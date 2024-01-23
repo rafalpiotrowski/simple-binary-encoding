@@ -1122,17 +1122,17 @@ public class TypeScriptGenerator implements CodeGenerator
                 indent + "    public %1$s(): string\n" +
                 indent + "    {\n" +
                 "%2$s" +
-                indent + "        let headerLength: number = %3$d;\n" +
-                indent + "        let limit: number = this._parentMessage.getLimit();\n" +
-                indent + "        let dataLength: number = %4$s%5$s;\n" +
+                indent + "        const headerLength: number = %3$d;\n" +
+                indent + "        const limit: number = this._parentMessage.getLimit();\n" +
+                indent + "        const dataLength: number = %4$s%5$s;\n" +
                 indent + "        this._parentMessage.setLimit(limit + headerLength + dataLength);\n\n" +
                 indent + "        if (0 == dataLength)\n" +
                 indent + "        {\n" +
                 indent + "            return \"\";\n" +
                 indent + "        }\n\n" +
-                indent + "        let tmp = new Uint8Array(dataLength);\n" +
+                indent + "        const tmp = new Uint8Array(dataLength);\n" +
                 indent + "        this.buffer().getBytes(limit + headerLength, tmp, 0, dataLength);\n\n" +
-                indent + "        let textDecoder = new TextDecoder('%6$s');\n" +
+                indent + "        const textDecoder = new TextDecoder('%6$s');\n" +
                 indent + "        return textDecoder.decode(tmp);\n" +
                 indent + "    }\n",
                 formatPropertyName(propertyName),
@@ -1148,13 +1148,13 @@ public class TypeScriptGenerator implements CodeGenerator
                     indent + "    public get%1$s(appendable: Array<number>): number\n" +
                     indent + "    {\n" +
                     "%2$s" +
-                    indent + "        let headerLength: number = %3$d;\n" +
-                    indent + "        let limit: number = this._parentMessage.getLimit();\n" +
-                    indent + "        let dataLength: number = %4$s%5$s;\n" +
-                    indent + "        let dataOffset: number = limit + headerLength;\n\n" +
+                    indent + "        const headerLength: number = %3$d;\n" +
+                    indent + "        const limit: number = this._parentMessage.getLimit();\n" +
+                    indent + "        const dataLength: number = %4$s%5$s;\n" +
+                    indent + "        const dataOffset: number = limit + headerLength;\n\n" +
                     indent + "        this._parentMessage.setLimit(dataOffset + dataLength);\n" +
                     indent + "        this.buffer()" +
-                    ".getStringWithoutLengthAscii(dataOffset, dataLength, appendable);\n\n" +
+                    ".getStringAscii(dataOffset, dataLength, appendable);\n\n" +
                     indent + "        return dataLength;\n" +
                     indent + "    }\n",
                     Generators.toUpperFirstChar(propertyName),
@@ -1179,9 +1179,9 @@ public class TypeScriptGenerator implements CodeGenerator
             indent + "    public wrap%s(wrapBuffer: %s)\n" +
             indent + "    {\n" +
             "%s" +
-            indent + "        let headerLength: number = %d;\n" +
-            indent + "        let limit: number = this._parentMessage.getLimit();\n" +
-            indent + "        let dataLength: number = %s%s;\n" +
+            indent + "        const headerLength: number = %d;\n" +
+            indent + "        const limit: number = this._parentMessage.getLimit();\n" +
+            indent + "        const dataLength: number = %s%s;\n" +
             indent + "        this._parentMessage.setLimit(limit + headerLength + dataLength);\n" +
             indent + "        wrapBuffer.wrap(this.buffer(), limit + headerLength, dataLength);\n" +
             indent + "    }\n",
@@ -1259,13 +1259,13 @@ public class TypeScriptGenerator implements CodeGenerator
             new Formatter(sb).format("\n" +
                 indent + "    public %2$s(value: string): %1$s\n" +
                 indent + "    {\n" +
-                indent + "        let length: number = null == value ? 0 : value.length;\n" +
+                indent + "        const length: number = null == value ? 0 : value.length;\n" +
                 indent + "        if (length > %3$d)\n" +
                 indent + "        {\n" +
                 indent + "            throw new Error(\"length > maxValue for type: \" + length);\n" +
                 indent + "        }\n\n" +
-                indent + "        let headerLength: number = %4$d;\n" +
-                indent + "        let limit: number = this._parentMessage.getLimit();\n" +
+                indent + "        const headerLength: number = %4$d;\n" +
+                indent + "        const limit: number = this._parentMessage.getLimit();\n" +
                 indent + "        this._parentMessage.setLimit(limit + headerLength + length);\n" +
                 indent + "        %5$s;\n" +
                 indent + "        this.buffer().putStringWithoutLengthAscii(limit + headerLength, value);\n\n" +
@@ -1303,16 +1303,16 @@ public class TypeScriptGenerator implements CodeGenerator
             new Formatter(sb).format("\n" +
                 indent + "    public %2$s(value: string): %1$s\n" +
                 indent + "    {\n" +
-                indent + "        let textDecoder = new TextEncoder();\n" +
-                indent + "        let bytes: Uint8Array = (null == value || value.length == 0) ?" +
+                indent + "        const textDecoder = new TextEncoder();\n" +
+                indent + "        const bytes: Uint8Array = (null == value || value.length == 0) ?" +
                 " new Uint8Array : textDecoder.encode(value);\n\n" +
-                indent + "        let length: number = bytes.length;\n" +
+                indent + "        const length: number = bytes.length;\n" +
                 indent + "        if (length > %4$d)\n" +
                 indent + "        {\n" +
                 indent + "            throw new Error(\"length > maxValue for type: \" + length);\n" +
                 indent + "        }\n\n" +
-                indent + "        let headerLength: number = %5$d;\n" +
-                indent + "        let limit: number = this._parentMessage.getLimit();\n" +
+                indent + "        const headerLength: number = %5$d;\n" +
+                indent + "        const limit: number = this._parentMessage.getLimit();\n" +
                 indent + "        this._parentMessage.setLimit(limit + headerLength + length);\n" +
                 indent + "        %6$s;\n" +
                 indent + "        this.buffer().putBytes(limit + headerLength, bytes, 0, length);\n\n" +
@@ -1341,10 +1341,10 @@ public class TypeScriptGenerator implements CodeGenerator
             indent + "    public get%s(dst: %s, dstOffset: number, length: number): number\n" +
             indent + "    {\n" +
             "%s" +
-            indent + "        let headerLength: number = %d;\n" +
-            indent + "        let limit: number = this._parentMessage.getLimit();\n" +
-            indent + "        let dataLength: number = %s%s;\n" +
-            indent + "        let bytesCopied: number = Math.min(length, dataLength);\n" +
+            indent + "        const headerLength: number = %d;\n" +
+            indent + "        const limit: number = this._parentMessage.getLimit();\n" +
+            indent + "        const dataLength: number = %s%s;\n" +
+            indent + "        const bytesCopied: number = Math.min(length, dataLength);\n" +
             indent + "        this._parentMessage.setLimit(limit + headerLength + dataLength);\n" +
             indent + "        this.buffer().getBytes(limit + headerLength, dst, dstOffset, bytesCopied);\n\n" +
             indent + "        return bytesCopied;\n" +
@@ -1377,8 +1377,8 @@ public class TypeScriptGenerator implements CodeGenerator
             indent + "        {\n" +
             indent + "            throw new Error(\"length > maxValue for type: \" + length);\n" +
             indent + "        }\n\n" +
-            indent + "        let headerLength: number = %5$d;\n" +
-            indent + "        let limit: number = this._parentMessage.getLimit();\n" +
+            indent + "        const headerLength: number = %5$d;\n" +
+            indent + "        const limit: number = this._parentMessage.getLimit();\n" +
             indent + "        this._parentMessage.setLimit(limit + headerLength + length);\n" +
             indent + "        %6$s;\n" +
             indent + "        this.buffer().putBytesWithOffset(limit + headerLength, src, srcOffset, length);\n\n" +
