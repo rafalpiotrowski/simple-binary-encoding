@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2023 Real Logic Limited.
+ * Copyright 2013-2024 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ public class FieldAccessOrderCheckTest
     private final MutableDirectBuffer buffer = new ExpandableArrayBuffer();
     private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
     private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
+    private final Random random = new Random();
 
     @BeforeAll
     static void assumeDebugMode()
@@ -53,7 +54,7 @@ public class FieldAccessOrderCheckTest
     @BeforeEach
     void setUp()
     {
-        new Random().nextBytes(buffer.byteArray());
+        random.nextBytes(buffer.byteArray());
     }
 
     @Test

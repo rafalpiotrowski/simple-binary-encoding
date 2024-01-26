@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2023 Real Logic Limited.
+ * Copyright 2013-2024 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -328,7 +328,14 @@ public class Ir
         while (endSignal != token.signal() || !name.equals(token.name()));
 
         updateComponentTokenCounts(typeTokens);
-        typesByNameMap.put(null == referencedName ? name : referencedName, typeTokens);
+
+        final String typeName = null == referencedName ? name : referencedName;
+        final List<Token> existingTypeTokens = typesByNameMap.get(typeName);
+
+        if (null == existingTypeTokens || existingTypeTokens.get(0).version() > typeTokens.get(0).version())
+        {
+            typesByNameMap.put(typeName, typeTokens);
+        }
 
         return i;
     }
