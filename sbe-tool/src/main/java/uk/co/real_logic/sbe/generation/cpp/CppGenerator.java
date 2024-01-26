@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2023 Real Logic Limited.
+ * Copyright 2013-2024 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -785,7 +785,6 @@ public class CppGenerator implements CodeGenerator
                 codecStateNullAssignment);
         }
 
-
         if (null != fieldPrecedenceModel)
         {
             sb.append("\n").append(indent).append("private:");
@@ -806,6 +805,11 @@ public class CppGenerator implements CodeGenerator
             indent + "    static SBE_CONSTEXPR std::uint64_t sbeBlockLength() SBE_NOEXCEPT\n" +
             indent + "    {\n" +
             indent + "        return %2$d;\n" +
+            indent + "    }\n\n" +
+
+            indent + "    SBE_NODISCARD std::uint64_t sbeActingBlockLength() SBE_NOEXCEPT\n" +
+            indent + "    {\n" +
+            indent + "        return m_blockLength;\n" +
             indent + "    }\n\n" +
 
             indent + "    SBE_NODISCARD std::uint64_t sbePosition() const SBE_NOEXCEPT\n" +
