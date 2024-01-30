@@ -42,7 +42,6 @@ public class TypeScriptOutputManager implements DynamicPackageOutputManager
      */
     public TypeScriptOutputManager(final String baseDirName, final String packageName)
     {
-        System.out.println("TypeScriptOutputManager baseDirName = " + baseDirName + " packageName = " + packageName);
         initialPackageOutputManager = new PackageOutputManager(baseDirName, packageName);
         actingPackageOutputManager = initialPackageOutputManager;
         this.baseDirName = baseDirName;
@@ -53,11 +52,11 @@ public class TypeScriptOutputManager implements DynamicPackageOutputManager
      */
     public void setPackageName(final String packageName)
     {
-        System.out.println("TypeScriptOutputManager setPackageName packageName = " + packageName);
         actingPackageOutputManager = outputManagerByPackageName.get(packageName);
         if (actingPackageOutputManager == null)
         {
-            actingPackageOutputManager = new PackageOutputManager(baseDirName, packageName);
+            actingPackageOutputManager =
+                new PackageOutputManager(baseDirName, packageName);
             outputManagerByPackageName.put(packageName, actingPackageOutputManager);
         }
     }

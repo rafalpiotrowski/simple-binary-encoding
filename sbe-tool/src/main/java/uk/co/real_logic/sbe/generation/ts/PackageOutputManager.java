@@ -46,8 +46,6 @@ public class PackageOutputManager implements OutputManager
         final String dirName = lastChar == separatorChar ? baseDirName : baseDirName + separatorChar;
         final String dirNamePlusPackage = dirName + packageName.replace('.', separatorChar);
 
-        System.out.println("dirNamePlusPackage = " + dirNamePlusPackage);
-
         outputDir = new File(dirNamePlusPackage);
         if (!outputDir.exists())
         {
