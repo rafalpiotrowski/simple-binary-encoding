@@ -628,7 +628,7 @@ tasks.register('generateTypeScriptExamples', JavaExec) {
     mainClass.set('uk.co.real_logic.sbe.SbeTool')
     classpath = project(':sbe-all').sourceSets.main.runtimeClasspath
     systemProperties(
-            'sbe.output.dir': 'generated/ts',
+            'sbe.output.dir': 'ts/generated',
             'sbe.xinclude.aware': 'true',
             'sbe.target.language': 'TypeScript',
             'sbe.target.namespace': 'examples')
@@ -643,7 +643,7 @@ tasks.register('generateTypeScriptTestCodecs', JavaExec) {
     mainClass.set('uk.co.real_logic.sbe.SbeTool')
     classpath = project(':sbe-all').sourceSets.main.runtimeClasspath
     systemProperties(
-            'sbe.output.dir': 'generated/ts',
+            'sbe.output.dir': 'ts/generated',
             'sbe.xinclude.aware': 'true',
             'sbe.target.language': 'TypeScript',
             'sbe.validation.xsd': validationXsdPath)

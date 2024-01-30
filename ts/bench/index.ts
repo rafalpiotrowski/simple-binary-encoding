@@ -1,9 +1,9 @@
 import { Bench } from "tinybench";
 import { DirectBuffer, DefaultMutableDirectBuffer } from "agrona";
-import { MessageHeaderEncoder } from "../../generated/ts/MessageHeaderEncoder.g";
-import { MessageHeaderDecoder } from "../../generated/ts/MessageHeaderDecoder.g";
-import { CarEncoder } from "../../generated/ts/CarEncoder.g";
-import { CarDecoder } from "../../generated/ts/CarDecoder.g";
+import { MessageHeaderEncoder } from "../generated/baseline/MessageHeaderEncoder.g";
+import { MessageHeaderDecoder } from "../generated/baseline/MessageHeaderDecoder.g";
+import { CarEncoder } from "../generated/baseline/CarEncoder.g";
+import { CarDecoder } from "../generated/baseline/CarDecoder.g";
 
 const sbeMessage = createMessage();
 
@@ -15,7 +15,6 @@ function createMessage(): Uint8Array {
     const engine = encoder.engine();
     engine.capacity(2000);
     engine.numCylinders(8);
-    engine.maxRpm(9000);
     const data = buffer.byteArray();
     // console.log(`Created message size: ${data.length}`);
     return data;

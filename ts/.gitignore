@@ -1,3 +1,7 @@
 node_modules/
 dist/
 package-lock.json
+codecs
+generated
+car_example_extension_data.sbe
+car_example_baseline_data.sbe
