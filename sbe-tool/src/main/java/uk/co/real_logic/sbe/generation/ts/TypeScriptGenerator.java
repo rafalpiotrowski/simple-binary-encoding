@@ -2031,7 +2031,7 @@ public class TypeScriptGenerator implements CodeGenerator
         final String retValue)
     {
         sb.append("\n")
-            .append(indent).append("    public static ")
+            .append(indent).append("    public static")
             .append(" ").append(formattedPropertyName).append(metaType).append("Value(): ").append(javaTypeName)
             .append("\n")
             .append(indent).append("    {\n")
