@@ -96,5 +96,6 @@
         <data name="semanticType" id="19" type="varDataEncoding"/>
         <data name="description" id="20" type="varDataEncoding"/>
         <data name="referencedName" id="21" type="varDataEncoding"/>
+        <data name="packageName" id="22" type="varDataEncoding"/>
     </sbe:message>
 </sbe:messageSchema>

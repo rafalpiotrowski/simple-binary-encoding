@@ -4,9 +4,11 @@
                    id="6"
                    version="0"
                    semanticVersion="5.2"
-                   description="Example schema"
+                   description="Code generation schema"
                    byteOrder="littleEndian">
     <types>
+        <type name="CharArray9" primitiveType="char" length="9" />
+        <type name="Buffer" primitiveType="int32" length="5"/>
         <composite name="BoosterT">
             <enum name="BoostType" encodingType="char">
                 <validValue name="TURBO">T</validValue>
@@ -34,6 +36,10 @@
             <type name="length" primitiveType="uint32" maxValue="1073741824"/>
             <type name="varData" primitiveType="uint8" length="0" characterEncoding="ASCII"/>
         </composite>
+        <composite name="ArrayPair">
+            <ref name="char" type="CharArray9"/>
+            <ref name="false" type="Buffer"/>
+        </composite>
     </types>
     <types>
         <type name="ModelYear" primitiveType="uint16"/>
@@ -56,6 +62,12 @@
             <validValue name="A">A</validValue>
             <validValue name="B">B</validValue>
             <validValue name="C">C</validValue>
+        </enum>
+        <enum name="Break" encodingType="uint8">
+            <validValue name="false">0</validValue>
+            <validValue name="true">1</validValue>
+            <validValue name="null">222</validValue>
+            <validValue name="return">254</validValue>
         </enum>
         <set name="OptionalExtras" encodingType="uint8">
             <choice name="sunRoof">0</choice>
@@ -89,5 +101,91 @@
         <data name="model" id="19" type="varStringEncoding"/>
         <data name="activationCode" id="20" type="varStringEncoding"/>
         <data name="color" id="21" type="varAsciiStringEncoding"/>
+    </sbe:message>
+    <sbe:message name="GlobalKeywords" id="2">
+        <field name="Abstract"      id="1"  type="int8"/>
+        <field name="assert"        id="2"  type="int8"/>
+        <field name="boolean"       id="3"  type="int8"/>
+        <field name="break"         id="4"  type="int8"/>
+        <field name="byte"          id="5"  type="int8"/>
+        <field name="case"          id="6"  type="int8"/>
+        <field name="catch"         id="7"  type="int8"/>
+        <field name="char"          id="8"  type="int8"/>
+        <field name="class"         id="9"  type="int8"/>
+        <field name="const"         id="10" type="int8"/>
+        <field name="continue"      id="11" type="int8"/>
+        <field name="default"       id="12" type="int8"/>
+        <field name="do"            id="13" type="int8"/>
+        <field name="double"        id="14" type="int8"/>
+        <field name="else"          id="15" type="int8"/>
+        <field name="enum"          id="16" type="int8"/>
+        <field name="extends"       id="17" type="int8"/>
+        <field name="final"         id="18" type="int8"/>
+        <field name="finally"       id="19" type="int8"/>
+        <field name="float"         id="20" type="int8"/>
+        <field name="for"           id="21" type="int8"/>
+        <field name="goto"          id="22" type="int8"/>
+        <field name="if"            id="23" type="int8"/>
+        <field name="implements"    id="24" type="int8"/>
+        <field name="Import"        id="25" type="CharArray9"/>
+        <field name="instanceof"    id="26" type="int8"/>
+        <field name="int"           id="27" type="int8"/>
+        <field name="interface"     id="28" type="int8"/>
+        <field name="long"          id="29" type="int8"/>
+        <field name="native"        id="30" type="int8"/>
+        <field name="new"           id="31" type="int8"/>
+        <field name="private"       id="33" type="int8"/>
+        <field name="protected"     id="34" type="int8"/>
+        <field name="public"        id="35" type="int8"/>
+        <field name="return"        id="36" type="int8"/>
+        <field name="short"         id="37" type="int8"/>
+        <field name="static"        id="38" type="int8"/>
+        <field name="strictfp"      id="39" type="CharArray9"/>
+        <field name="super"         id="40" type="int8"/>
+        <field name="switch"        id="41" type="int8"/>
+        <field name="synchronized"  id="42" type="int8"/>
+        <field name="this"          id="43" type="int8"/>
+        <field name="throw"         id="44" type="int8"/>
+        <field name="throws"        id="45" type="int8"/>
+        <field name="transient"     id="46" type="int8"/>
+        <field name="try"           id="47" type="int8"/>
+        <field name="void"          id="48" type="Buffer"/>
+        <field name="volatile"      id="49" type="int8"/>
+        <field name="while"         id="50" type="int8"/>
+        <field name="true"          id="52" type="ArrayPair"/>
+        <field name="false"         id="53" type="int8"/>
+        <field name="_"             id="54" type="Break"/>
+        <field name="falsE"         id="55" type="int8"/>
+        <field name="func"          id="56" type="uint16"/>
+        <field name="string"        id="57" type="int64"/>
+        <field name="length"        id="58" type="int64"/>
+        <field name="size"          id="59" type="int64"/>
+        <field name="nil"           id="60" type="int64"/>
+        <field name="panic"         id="61" type="int64"/>
+        <field name="uint"          id="62" type="int64"/>
+        <field name="uint8"         id="63" type="int64"/>
+        <field name="uint16"        id="64" type="int64"/>
+        <field name="uint32"        id="65" type="int64"/>
+        <field name="uint64"        id="66" type="int64"/>
+        <field name="delete"        id="67" type="int64"/>
+        <field name="iota"          id="68" type="int64"/>
+        <field name="close"         id="69" type="int64"/>
+        <field name="defer"         id="70" type="int64"/>
+        <field name="struct"        id="71" type="int64"/>
+        <field name="Make"          id="72" type="int64"/>
+        <field name="type"          id="73" type="uint8"/>
+        <group name="data"          id="90" dimensionType="groupSizeEncoding">
+            <field name="this"      id="91" type="Ron"/>
+            <group name="super"     id="92" dimensionType="groupSizeEncoding">
+                <field name="mph"   id="93" type="uint16"/>
+                <field name="try"   id="94" type="float"/>
+                <field name="defer" id="95" type="float"/>
+                <field name="new"   id="96" type="CharArray9"/>
+                <data name="import" id="97" type="varAsciiStringEncoding"/>
+            </group>
+        </group>
+        <data name="go"             id="100" type="varStringEncoding"/>
+        <data name="package"        id="101" type="varStringEncoding"/>
+        <data name="var"            id="102" type="varAsciiStringEncoding"/>
     </sbe:message>
 </sbe:messageSchema>

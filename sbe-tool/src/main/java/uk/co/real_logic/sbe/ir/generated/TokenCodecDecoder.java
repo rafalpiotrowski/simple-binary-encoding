@@ -59,6 +59,8 @@ public final class TokenCodecDecoder
      *       V0_SEMANTICTYPE_DONE -> V0_DESCRIPTION_DONE [label="  description(?)  "];
      *       V0_DESCRIPTION_DONE -> V0_DESCRIPTION_DONE [label="  referencedNameLength()  "];
      *       V0_DESCRIPTION_DONE -> V0_REFERENCEDNAME_DONE [label="  referencedName(?)  "];
+     *       V0_REFERENCEDNAME_DONE -> V0_REFERENCEDNAME_DONE [label="  packageNameLength()  "];
+     *       V0_REFERENCEDNAME_DONE -> V0_PACKAGENAME_DONE [label="  packageName(?)  "];
      *   }
      * }</pre>
      */
@@ -77,6 +79,7 @@ public final class TokenCodecDecoder
         private static final int V0_SEMANTICTYPE_DONE = 10;
         private static final int V0_DESCRIPTION_DONE = 11;
         private static final int V0_REFERENCEDNAME_DONE = 12;
+        private static final int V0_PACKAGENAME_DONE = 13;
 
         private static final String[] STATE_NAME_LOOKUP =
         {
@@ -93,6 +96,7 @@ public final class TokenCodecDecoder
             "V0_SEMANTICTYPE_DONE",
             "V0_DESCRIPTION_DONE",
             "V0_REFERENCEDNAME_DONE",
+            "V0_PACKAGENAME_DONE",
         };
 
         private static final String[] STATE_TRANSITIONS_LOOKUP =
@@ -109,6 +113,7 @@ public final class TokenCodecDecoder
             "\"semanticTypeLength()\", \"semanticType(?)\"",
             "\"descriptionLength()\", \"description(?)\"",
             "\"referencedNameLength()\", \"referencedName(?)\"",
+            "\"packageNameLength()\", \"packageName(?)\"",
             "",
         };
 
@@ -186,15 +191,13 @@ public final class TokenCodecDecoder
 
     private void onWrap(final int actingVersion)
     {
-        switch(actingVersion)
+        if (actingVersion >= 0)
         {
-            case 0:
-                codecState(CodecStates.V0_BLOCK);
-                break;
-            default:
-                codecState(CodecStates.V0_BLOCK);
-                break;
+            codecState(CodecStates.V0_BLOCK);
+            return;
         }
+
+        throw new IllegalStateException("Unsupported acting version: " + actingVersion);
     }
 
     public TokenCodecDecoder wrap(
@@ -344,7 +347,7 @@ public final class TokenCodecDecoder
             onTokenOffsetAccessed();
         }
 
-        return buffer.getInt(offset + 0, java.nio.ByteOrder.LITTLE_ENDIAN);
+        return buffer.getInt(offset + 0, BYTE_ORDER);
     }
 
 
@@ -411,7 +414,7 @@ public final class TokenCodecDecoder
             onTokenSizeAccessed();
         }
 
-        return buffer.getInt(offset + 4, java.nio.ByteOrder.LITTLE_ENDIAN);
+        return buffer.getInt(offset + 4, BYTE_ORDER);
     }
 
 
@@ -478,7 +481,7 @@ public final class TokenCodecDecoder
             onFieldIdAccessed();
         }
 
-        return buffer.getInt(offset + 8, java.nio.ByteOrder.LITTLE_ENDIAN);
+        return buffer.getInt(offset + 8, BYTE_ORDER);
     }
 
 
@@ -545,7 +548,7 @@ public final class TokenCodecDecoder
             onTokenVersionAccessed();
         }
 
-        return buffer.getInt(offset + 12, java.nio.ByteOrder.LITTLE_ENDIAN);
+        return buffer.getInt(offset + 12, BYTE_ORDER);
     }
 
 
@@ -612,7 +615,7 @@ public final class TokenCodecDecoder
             onComponentTokenCountAccessed();
         }
 
-        return buffer.getInt(offset + 16, java.nio.ByteOrder.LITTLE_ENDIAN);
+        return buffer.getInt(offset + 16, BYTE_ORDER);
     }
 
 
@@ -927,7 +930,7 @@ public final class TokenCodecDecoder
             onDeprecatedAccessed();
         }
 
-        return buffer.getInt(offset + 24, java.nio.ByteOrder.LITTLE_ENDIAN);
+        return buffer.getInt(offset + 24, BYTE_ORDER);
     }
 
 
@@ -999,7 +1002,7 @@ public final class TokenCodecDecoder
         }
 
         final int limit = parentMessage.limit();
-        return (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        return (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
     }
 
     public int skipName()
@@ -1011,7 +1014,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int dataOffset = limit + headerLength;
         parentMessage.limit(dataOffset + dataLength);
 
@@ -1027,7 +1030,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -1044,7 +1047,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -1061,7 +1064,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
         wrapBuffer.wrap(buffer, limit + headerLength, dataLength);
     }
@@ -1075,7 +1078,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
 
         if (0 == dataLength)
@@ -1157,7 +1160,7 @@ public final class TokenCodecDecoder
         }
 
         final int limit = parentMessage.limit();
-        return (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        return (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
     }
 
     public int skipConstValue()
@@ -1169,7 +1172,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int dataOffset = limit + headerLength;
         parentMessage.limit(dataOffset + dataLength);
 
@@ -1185,7 +1188,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -1202,7 +1205,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -1219,7 +1222,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
         wrapBuffer.wrap(buffer, limit + headerLength, dataLength);
     }
@@ -1233,7 +1236,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
 
         if (0 == dataLength)
@@ -1315,7 +1318,7 @@ public final class TokenCodecDecoder
         }
 
         final int limit = parentMessage.limit();
-        return (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        return (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
     }
 
     public int skipMinValue()
@@ -1327,7 +1330,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int dataOffset = limit + headerLength;
         parentMessage.limit(dataOffset + dataLength);
 
@@ -1343,7 +1346,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -1360,7 +1363,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -1377,7 +1380,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
         wrapBuffer.wrap(buffer, limit + headerLength, dataLength);
     }
@@ -1391,7 +1394,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
 
         if (0 == dataLength)
@@ -1473,7 +1476,7 @@ public final class TokenCodecDecoder
         }
 
         final int limit = parentMessage.limit();
-        return (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        return (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
     }
 
     public int skipMaxValue()
@@ -1485,7 +1488,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int dataOffset = limit + headerLength;
         parentMessage.limit(dataOffset + dataLength);
 
@@ -1501,7 +1504,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -1518,7 +1521,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -1535,7 +1538,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
         wrapBuffer.wrap(buffer, limit + headerLength, dataLength);
     }
@@ -1549,7 +1552,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
 
         if (0 == dataLength)
@@ -1631,7 +1634,7 @@ public final class TokenCodecDecoder
         }
 
         final int limit = parentMessage.limit();
-        return (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        return (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
     }
 
     public int skipNullValue()
@@ -1643,7 +1646,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int dataOffset = limit + headerLength;
         parentMessage.limit(dataOffset + dataLength);
 
@@ -1659,7 +1662,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -1676,7 +1679,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -1693,7 +1696,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
         wrapBuffer.wrap(buffer, limit + headerLength, dataLength);
     }
@@ -1707,7 +1710,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
 
         if (0 == dataLength)
@@ -1789,7 +1792,7 @@ public final class TokenCodecDecoder
         }
 
         final int limit = parentMessage.limit();
-        return (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        return (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
     }
 
     public int skipCharacterEncoding()
@@ -1801,7 +1804,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int dataOffset = limit + headerLength;
         parentMessage.limit(dataOffset + dataLength);
 
@@ -1817,7 +1820,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -1834,7 +1837,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -1851,7 +1854,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
         wrapBuffer.wrap(buffer, limit + headerLength, dataLength);
     }
@@ -1865,7 +1868,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
 
         if (0 == dataLength)
@@ -1947,7 +1950,7 @@ public final class TokenCodecDecoder
         }
 
         final int limit = parentMessage.limit();
-        return (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        return (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
     }
 
     public int skipEpoch()
@@ -1959,7 +1962,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int dataOffset = limit + headerLength;
         parentMessage.limit(dataOffset + dataLength);
 
@@ -1975,7 +1978,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -1992,7 +1995,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -2009,7 +2012,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
         wrapBuffer.wrap(buffer, limit + headerLength, dataLength);
     }
@@ -2023,7 +2026,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
 
         if (0 == dataLength)
@@ -2105,7 +2108,7 @@ public final class TokenCodecDecoder
         }
 
         final int limit = parentMessage.limit();
-        return (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        return (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
     }
 
     public int skipTimeUnit()
@@ -2117,7 +2120,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int dataOffset = limit + headerLength;
         parentMessage.limit(dataOffset + dataLength);
 
@@ -2133,7 +2136,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -2150,7 +2153,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -2167,7 +2170,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
         wrapBuffer.wrap(buffer, limit + headerLength, dataLength);
     }
@@ -2181,7 +2184,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
 
         if (0 == dataLength)
@@ -2263,7 +2266,7 @@ public final class TokenCodecDecoder
         }
 
         final int limit = parentMessage.limit();
-        return (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        return (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
     }
 
     public int skipSemanticType()
@@ -2275,7 +2278,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int dataOffset = limit + headerLength;
         parentMessage.limit(dataOffset + dataLength);
 
@@ -2291,7 +2294,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -2308,7 +2311,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -2325,7 +2328,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
         wrapBuffer.wrap(buffer, limit + headerLength, dataLength);
     }
@@ -2339,7 +2342,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
 
         if (0 == dataLength)
@@ -2421,7 +2424,7 @@ public final class TokenCodecDecoder
         }
 
         final int limit = parentMessage.limit();
-        return (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        return (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
     }
 
     public int skipDescription()
@@ -2433,7 +2436,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int dataOffset = limit + headerLength;
         parentMessage.limit(dataOffset + dataLength);
 
@@ -2449,7 +2452,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -2466,7 +2469,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -2483,7 +2486,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
         wrapBuffer.wrap(buffer, limit + headerLength, dataLength);
     }
@@ -2497,7 +2500,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
 
         if (0 == dataLength)
@@ -2579,7 +2582,7 @@ public final class TokenCodecDecoder
         }
 
         final int limit = parentMessage.limit();
-        return (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        return (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
     }
 
     public int skipReferencedName()
@@ -2591,7 +2594,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int dataOffset = limit + headerLength;
         parentMessage.limit(dataOffset + dataLength);
 
@@ -2607,7 +2610,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -2624,7 +2627,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         final int bytesCopied = Math.min(length, dataLength);
         parentMessage.limit(limit + headerLength + dataLength);
         buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
@@ -2641,7 +2644,7 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
         wrapBuffer.wrap(buffer, limit + headerLength, dataLength);
     }
@@ -2655,7 +2658,165 @@ public final class TokenCodecDecoder
 
         final int headerLength = 2;
         final int limit = parentMessage.limit();
-        final int dataLength = (buffer.getShort(limit, java.nio.ByteOrder.LITTLE_ENDIAN) & 0xFFFF);
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
+        parentMessage.limit(limit + headerLength + dataLength);
+
+        if (0 == dataLength)
+        {
+            return "";
+        }
+
+        final byte[] tmp = new byte[dataLength];
+        buffer.getBytes(limit + headerLength, tmp, 0, dataLength);
+
+        return new String(tmp, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    public static int packageNameId()
+    {
+        return 22;
+    }
+
+    public static int packageNameSinceVersion()
+    {
+        return 0;
+    }
+
+    public static String packageNameCharacterEncoding()
+    {
+        return java.nio.charset.StandardCharsets.UTF_8.name();
+    }
+
+    public static String packageNameMetaAttribute(final MetaAttribute metaAttribute)
+    {
+        if (MetaAttribute.PRESENCE == metaAttribute)
+        {
+            return "required";
+        }
+
+        return "";
+    }
+
+    public static int packageNameHeaderLength()
+    {
+        return 2;
+    }
+
+    void onPackageNameLengthAccessed()
+    {
+        switch (codecState())
+        {
+            case CodecStates.V0_REFERENCEDNAME_DONE:
+                codecState(CodecStates.V0_REFERENCEDNAME_DONE);
+                break;
+            default:
+                throw new IllegalStateException("Illegal field access order. " +
+                    "Cannot decode length of var data \"packageName\" in state: " + CodecStates.name(codecState()) +
+                    ". Expected one of these transitions: [" + CodecStates.transitions(codecState()) +
+                    "]. Please see the diagram in the Javadoc of the class TokenCodecDecoder#CodecStates.");
+        }
+    }
+
+    private void onPackageNameAccessed()
+    {
+        switch (codecState())
+        {
+            case CodecStates.V0_REFERENCEDNAME_DONE:
+                codecState(CodecStates.V0_PACKAGENAME_DONE);
+                break;
+            default:
+                throw new IllegalStateException("Illegal field access order. " +
+                    "Cannot access field \"packageName\" in state: " + CodecStates.name(codecState()) +
+                    ". Expected one of these transitions: [" + CodecStates.transitions(codecState()) +
+                    "]. Please see the diagram in the Javadoc of the class TokenCodecDecoder#CodecStates.");
+        }
+    }
+
+    public int packageNameLength()
+    {
+        if (SBE_ENABLE_IR_PRECEDENCE_CHECKS)
+        {
+            onPackageNameLengthAccessed();
+        }
+
+        final int limit = parentMessage.limit();
+        return (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
+    }
+
+    public int skipPackageName()
+    {
+        if (SBE_ENABLE_IR_PRECEDENCE_CHECKS)
+        {
+            onPackageNameAccessed();
+        }
+
+        final int headerLength = 2;
+        final int limit = parentMessage.limit();
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
+        final int dataOffset = limit + headerLength;
+        parentMessage.limit(dataOffset + dataLength);
+
+        return dataLength;
+    }
+
+    public int getPackageName(final MutableDirectBuffer dst, final int dstOffset, final int length)
+    {
+        if (SBE_ENABLE_IR_PRECEDENCE_CHECKS)
+        {
+            onPackageNameAccessed();
+        }
+
+        final int headerLength = 2;
+        final int limit = parentMessage.limit();
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
+        final int bytesCopied = Math.min(length, dataLength);
+        parentMessage.limit(limit + headerLength + dataLength);
+        buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
+
+        return bytesCopied;
+    }
+
+    public int getPackageName(final byte[] dst, final int dstOffset, final int length)
+    {
+        if (SBE_ENABLE_IR_PRECEDENCE_CHECKS)
+        {
+            onPackageNameAccessed();
+        }
+
+        final int headerLength = 2;
+        final int limit = parentMessage.limit();
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
+        final int bytesCopied = Math.min(length, dataLength);
+        parentMessage.limit(limit + headerLength + dataLength);
+        buffer.getBytes(limit + headerLength, dst, dstOffset, bytesCopied);
+
+        return bytesCopied;
+    }
+
+    public void wrapPackageName(final DirectBuffer wrapBuffer)
+    {
+        if (SBE_ENABLE_IR_PRECEDENCE_CHECKS)
+        {
+            onPackageNameAccessed();
+        }
+
+        final int headerLength = 2;
+        final int limit = parentMessage.limit();
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
+        parentMessage.limit(limit + headerLength + dataLength);
+        wrapBuffer.wrap(buffer, limit + headerLength, dataLength);
+    }
+
+    public String packageName()
+    {
+        if (SBE_ENABLE_IR_PRECEDENCE_CHECKS)
+        {
+            onPackageNameAccessed();
+        }
+
+        final int headerLength = 2;
+        final int limit = parentMessage.limit();
+        final int dataLength = (buffer.getShort(limit, BYTE_ORDER) & 0xFFFF);
         parentMessage.limit(limit + headerLength + dataLength);
 
         if (0 == dataLength)
@@ -2772,6 +2933,9 @@ public final class TokenCodecDecoder
         builder.append('|');
         builder.append("referencedName=");
         builder.append('\'').append(referencedName()).append('\'');
+        builder.append('|');
+        builder.append("packageName=");
+        builder.append('\'').append(packageName()).append('\'');
 
         limit(originalLimit);
 
@@ -2792,6 +2956,7 @@ public final class TokenCodecDecoder
         skipSemanticType();
         skipDescription();
         skipReferencedName();
+        skipPackageName();
 
         return this;
     }

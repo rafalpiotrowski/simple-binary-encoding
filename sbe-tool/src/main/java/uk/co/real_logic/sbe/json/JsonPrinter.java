@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 package uk.co.real_logic.sbe.json;
 
+import org.agrona.DirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import uk.co.real_logic.sbe.ir.Ir;
 import uk.co.real_logic.sbe.ir.Token;
@@ -62,7 +63,7 @@ public class JsonPrinter
      * @param buffer with encoded message and header.
      * @param offset at which the header begins.
      */
-    public void print(final StringBuilder output, final UnsafeBuffer buffer, final int offset)
+    public void print(final StringBuilder output, final DirectBuffer buffer, final int offset)
     {
         final int blockLength = headerDecoder.getBlockLength(buffer, offset);
         final int templateId = headerDecoder.getTemplateId(buffer, offset);

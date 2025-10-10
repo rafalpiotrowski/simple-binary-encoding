@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ public class JavaUtil
     /**
      * Separator symbols for {@link Object#toString()} implementations on codecs.
      */
+    @SuppressWarnings("JavadocVariable")
     enum Separator
     {
         BEGIN_GROUP('['),
@@ -155,22 +156,34 @@ public class JavaUtil
      */
     public static String formatPropertyName(final String value)
     {
-        String formattedValue = Generators.toLowerFirstChar(value);
+        return formatForJavaKeyword(Generators.toLowerFirstChar(value));
+    }
 
-        if (ValidationUtil.isJavaKeyword(formattedValue))
+    /**
+     * Format a name for generated code.
+     * <p>
+     * If the formatted name is a keyword then {@link SbeTool#KEYWORD_APPEND_TOKEN} is appended if set.
+     *
+     * @param value to be formatted.
+     * @return the string formatted as a valid name.
+     * @throws IllegalStateException if a keyword and {@link SbeTool#KEYWORD_APPEND_TOKEN} is not set.
+     */
+    public static String formatForJavaKeyword(final String value)
+    {
+        if (ValidationUtil.isJavaKeyword(value))
         {
             final String keywordAppendToken = System.getProperty(SbeTool.KEYWORD_APPEND_TOKEN);
             if (null == keywordAppendToken)
             {
                 throw new IllegalStateException(
-                    "Invalid property name='" + formattedValue +
+                    "Invalid property name='" + value +
                     "' please correct the schema or consider setting system property: " + SbeTool.KEYWORD_APPEND_TOKEN);
             }
 
-            formattedValue += keywordAppendToken;
+            return value + keywordAppendToken;
         }
 
-        return formattedValue;
+        return value;
     }
 
     /**
@@ -196,11 +209,11 @@ public class JavaUtil
     }
 
     /**
-     * Shortcut to append a line of generated code
+     * Shortcut to append a line of generated code.
      *
-     * @param builder string builder to which to append the line
-     * @param indent  current text indentation
-     * @param line    line to be appended
+     * @param builder string builder to which to append the line.
+     * @param indent  current text indentation.
+     * @param line    line to be appended.
      */
     public static void append(final StringBuilder builder, final String indent, final String line)
     {
@@ -462,6 +475,16 @@ public class JavaUtil
             .append(indent).append(" * @param count of times the group will be encoded.\n")
             .append(indent).append(" * @return ").append(typeName).append(" : encoder for the group.\n")
             .append(indent).append(" */");
+    }
+
+    static String encoderName(final String className)
+    {
+        return formatClassName(className) + "Encoder";
+    }
+
+    static String decoderName(final String className)
+    {
+        return formatClassName(className) + "Decoder";
     }
 
     private static void escapeJavadoc(final Appendable out, final String doc) throws IOException

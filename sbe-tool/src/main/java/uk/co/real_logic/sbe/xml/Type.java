@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,7 +94,7 @@ public abstract class Type
      * @param presence     of the type.
      * @param description  of the type or null.
      * @param sinceVersion for the type
-     * @param deprecated   version in which this wa.s deprecated.
+     * @param deprecated   version in which this was deprecated.
      * @param semanticType of the type or null.
      */
     public Type(

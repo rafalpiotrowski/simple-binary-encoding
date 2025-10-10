@@ -1,6 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use examples_uk_co_real_logic_sbe_benchmarks_fix::*;
-use market_data_incremental_refresh_trades_codec::encoder::*;
+use examples_uk_co_real_logic_sbe_benchmarks_fix::{
+    market_data_incremental_refresh_trades_codec::{encoder::*, *},
+    match_event_indicator::*,
+    md_update_action::*,
+    message_header_codec::*,
+    side::*,
+    *,
+};
 
 struct State {
     buffer: Vec<u8>,
@@ -84,7 +90,7 @@ fn decode_md(state: &State) -> SbeResult<usize> {
 
     let buf = ReadBuf::new(state.buffer.as_slice());
     let header = MessageHeaderDecoder::default().wrap(buf, 0);
-    market_data = market_data.header(header);
+    market_data = market_data.header(header, 0);
 
     market_data.transact_time();
     market_data.event_time_delta();

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -151,6 +151,16 @@ public class SbeTool
     public static final String CPP_NAMESPACES_COLLAPSE = "sbe.cpp.namespaces.collapse";
 
     /**
+     * Version of the Rust crate to generate.
+     */
+    public static final String RUST_CRATE_VERSION = "sbe.rust.crate.version";
+
+    /**
+     * The default version of the Rust crate to generate, when not specified via the system property.
+     */
+    public static final String RUST_DEFAULT_CRATE_VERSION = "0.1.0";
+
+    /**
      * Boolean system property to turn on or off generation of the interface hierarchy. Defaults to false.
      */
     public static final String JAVA_GENERATE_INTERFACES = "sbe.java.generate.interfaces";
@@ -205,6 +215,16 @@ public class SbeTool
     public static final String DECODE_UNKNOWN_ENUM_VALUES = "sbe.decode.unknown.enum.values";
 
     /**
+     * Should generate C++ DTOs. Defaults to false.
+     */
+    public static final String CPP_GENERATE_DTOS = "sbe.cpp.generate.dtos";
+
+    /**
+     * Should generate Java DTOs. Defaults to false.
+     */
+    public static final String JAVA_GENERATE_DTOS = "sbe.java.generate.dtos";
+
+    /**
      * Configuration option used to manage sinceVersion based transformations. When set, parsed schemas will be
      * transformed to discard messages and types higher than the specified version. This can be useful when needing
      * to generate older versions of a schema to do version compatibility testing.
@@ -233,6 +253,12 @@ public class SbeTool
      * in generated Java code.
      */
     public static final String JAVA_PRECEDENCE_CHECKS_PROPERTY_NAME = "sbe.java.precedence.checks.property.name";
+
+    /**
+     * Boolean system property to generate flyweights instead of structs in generated Go code.
+     * Defaults to false
+     */
+    public static final String GO_GENERATE_FLYWEIGHTS = "sbe.go.generate.generate.flyweights";
 
     /**
      * Main entry point for the SBE Tool.

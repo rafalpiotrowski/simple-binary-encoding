@@ -1,5 +1,5 @@
 #
-# Copyright 2013-2024 Real Logic Limited.
+# Copyright 2013-2025 Real Logic Limited.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ find_package(Java REQUIRED)
 
 add_custom_command(OUTPUT ${CODECS}
     COMMAND
-        ${Java_JAVA_EXECUTABLE}
+        ${Java_JAVA_EXECUTABLE} --add-opens java.base/jdk.internal.misc=ALL-UNNAMED
             "-Dsbe.output.dir=${CMAKE_CURRENT_SOURCE_DIR}"
             "-Dsbe.target.language=CPP"
             "-jar" "${SBE_JAR}"

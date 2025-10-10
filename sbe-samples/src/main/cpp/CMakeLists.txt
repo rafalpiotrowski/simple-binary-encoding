@@ -1,5 +1,5 @@
 #
-# Copyright 2013-2024 Real Logic Limited.
+# Copyright 2013-2025 Real Logic Limited.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ set(EXAMPLES_SCHEMA ${CODEC_EXAMPLES_SCHEMA_DIR}/example-schema.xml)
 add_custom_command(
     OUTPUT ${GENERATED_CODECS}
     DEPENDS ${EXAMPLES_SCHEMA} sbe-jar ${SBE_JAR}
-    COMMAND ${Java_JAVA_EXECUTABLE} -Dsbe.output.dir=${CXX_CODEC_TARGET_DIR} -Dsbe.generate.ir=true -Dsbe.target.language=cpp -Dsbe.xinclude.aware=true -jar ${SBE_JAR} ${EXAMPLES_SCHEMA}
+    COMMAND ${Java_JAVA_EXECUTABLE} --add-opens java.base/jdk.internal.misc=ALL-UNNAMED -Dsbe.output.dir=${CXX_CODEC_TARGET_DIR} -Dsbe.generate.ir=true -Dsbe.target.language=cpp -Dsbe.xinclude.aware=true -jar ${SBE_JAR} ${EXAMPLES_SCHEMA}
 )
 add_custom_target(examples_codecs DEPENDS ${GENERATED_CODECS})
 

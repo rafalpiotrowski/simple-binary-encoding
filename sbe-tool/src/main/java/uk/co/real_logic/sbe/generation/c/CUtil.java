@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -108,11 +108,11 @@ public class CUtil
     }
 
     /**
-     * Return the C99 formatted byte order encoding string to use for a given byte order and primitiveType
+     * Return the C99 formatted byte order encoding string to use for a given byte order and primitiveType.
      *
-     * @param byteOrder     of the {@link uk.co.real_logic.sbe.ir.Token}
-     * @param primitiveType of the {@link uk.co.real_logic.sbe.ir.Token}
-     * @return the string formatted as the byte ordering encoding
+     * @param byteOrder     of the {@link uk.co.real_logic.sbe.ir.Token}.
+     * @param primitiveType of the {@link uk.co.real_logic.sbe.ir.Token}.
+     * @return the string formatted as the byte ordering encoding.
      */
     public static String formatByteOrderEncoding(final ByteOrder byteOrder, final PrimitiveType primitiveType)
     {

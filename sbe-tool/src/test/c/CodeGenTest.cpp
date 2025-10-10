@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1093,7 +1093,7 @@ void testUsageDescription(CGT(car_fuelFigures) *const fuelFigures, const std::st
 
 TEST_F(CodeGenTest, shouldBeAbleToUseStdStringMethodsForDecode)
 {
-    char buffer[2048] = {};
+    char buffer[BUFFER_LEN] = {};
     CGT(car) carEncoder;
     CGT(car_reset)(&carEncoder, buffer, 0, sizeof(buffer), CGT(car_sbe_block_length)(), CGT(car_sbe_schema_version)());
 
@@ -1185,7 +1185,7 @@ TEST_F(CodeGenTest, shouldBeAbleToUseStdStringMethodsForDecode)
 
 TEST_F(CodeGenTest, shouldAllowForMultipleIterations2)
 {
-    char buffer[2048] = {};
+    char buffer[BUFFER_LEN] = {};
 
     std::uint64_t hdrSz = encodeHdr(buffer, 0, sizeof(buffer));
     std::uint64_t carEncodedLength = encodeCar(

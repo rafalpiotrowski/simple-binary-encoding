@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  * Copyright (C) 2016 MarketFactory, Inc
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package uk.co.real_logic.sbe.generation.golang;
+package uk.co.real_logic.sbe.generation.golang.struct;
 
 import uk.co.real_logic.sbe.PrimitiveType;
 import uk.co.real_logic.sbe.generation.CodeGenerator;
@@ -37,7 +37,7 @@ import java.util.TreeSet;
 
 import static uk.co.real_logic.sbe.PrimitiveType.CHAR;
 import static uk.co.real_logic.sbe.generation.Generators.toUpperFirstChar;
-import static uk.co.real_logic.sbe.generation.golang.GolangUtil.*;
+import static uk.co.real_logic.sbe.generation.golang.struct.GolangUtil.*;
 import static uk.co.real_logic.sbe.ir.GenerationUtil.collectVarData;
 import static uk.co.real_logic.sbe.ir.GenerationUtil.collectGroups;
 import static uk.co.real_logic.sbe.ir.GenerationUtil.collectFields;
@@ -1055,12 +1055,16 @@ public class GolangGenerator implements CodeGenerator
                 // Encode of a constant is a nullop, decode is assignment
                 if (signalToken.isConstantEncoding())
                 {
+                    final String rawValue = signalToken.encoding().constValue().toString();
+                    final int dotIndex = rawValue.indexOf('.');
+                    final String constantValue = toUpperFirstChar(rawValue.substring(0, dotIndex)) + "." +
+                        toUpperFirstChar(rawValue.substring(dotIndex + 1));
                     decode.append(String.format(
                         "\t%1$s.%2$s = %3$s\n",
-                        varName, propertyName, signalToken.encoding().constValue()));
+                        varName, propertyName, constantValue));
                     init.append(String.format(
                         "\t%1$s.%2$s = %3$s\n",
-                        varName, propertyName, signalToken.encoding().constValue()));
+                        varName, propertyName, constantValue));
                 }
                 else
                 {
@@ -1272,8 +1276,8 @@ public class GolangGenerator implements CodeGenerator
 
         // Write the group itself
         encode.append(String.format(
-            "\tfor _, prop := range %1$s.%2$s {\n" +
-            "\t\tif err := prop.Encode(_m, _w); err != nil {\n" +
+            "\tfor i := range %1$s.%2$s {\n" +
+            "\t\tif err := %1$s.%2$s[i].Encode(_m, _w); err != nil {\n" +
             "\t\t\treturn err\n" +
             "\t\t}\n",
             varName,
@@ -1325,8 +1329,8 @@ public class GolangGenerator implements CodeGenerator
 
         // Range check the group itself
         rc.append(String.format(
-            "\tfor _, prop := range %1$s.%2$s {\n" +
-            "\t\tif err := prop.RangeCheck(actingVersion, schemaVersion); err != nil {\n" +
+            "\tfor i := range %1$s.%2$s {\n" +
+            "\t\tif err := %1$s.%2$s[i].RangeCheck(actingVersion, schemaVersion); err != nil {\n" +
             "\t\t\treturn err\n" +
             "\t\t}\n" +
             "\t}\n",
@@ -1407,7 +1411,7 @@ public class GolangGenerator implements CodeGenerator
                 throw new IllegalStateException("tokens must begin with BEGIN_VAR_DATA: token=" + token);
             }
 
-            final String propertyName = toUpperFirstChar(token.name());
+            final String propertyName = formatPropertyName(token.name());
             final Token lengthToken = Generators.findFirst("length", tokens, i);
             final int lengthOfLengthField = lengthToken.encodedLength();
             final Token varDataToken = Generators.findFirst("varData", tokens, i);
@@ -1471,7 +1475,7 @@ public class GolangGenerator implements CodeGenerator
 
             for (final Token token : tokens.subList(1, tokens.size() - 1))
             {
-                generateSinceActingDeprecated(sb, choiceName, token.name(), token);
+                generateSinceActingDeprecated(sb, choiceName, formatPropertyName(token.name()), token);
             }
             out.append(generateFileHeader(ir.namespaces()));
             out.append(sb);
@@ -1510,7 +1514,7 @@ public class GolangGenerator implements CodeGenerator
 
             for (final Token token : tokens.subList(1, tokens.size() - 1))
             {
-                generateSinceActingDeprecated(sb, enumName + "Enum", token.name(), token);
+                generateSinceActingDeprecated(sb, enumName + "Enum", formatPropertyName(token.name()), token);
             }
 
             out.append(generateFileHeader(ir.namespaces()));
@@ -1574,7 +1578,7 @@ public class GolangGenerator implements CodeGenerator
         {
             sb.append(String.format(
                 "\t%1$s%2$s%3$sEnum\n",
-                token.name(),
+                formatPropertyName(token.name()),
                 generateWhitespace(longest - token.name().length() + 1),
                 enumName));
         }
@@ -1768,7 +1772,7 @@ public class GolangGenerator implements CodeGenerator
                                 sb.append("\t").append(propertyName)
                                     .append(generateWhitespace(length))
                                     .append(arrayspec)
-                                    .append(encodingToken.applicableTypeName())
+                                    .append(formatTypeName(encodingToken.applicableTypeName()))
                                     .append("Enum\n");
                                 break;
 
@@ -1776,7 +1780,7 @@ public class GolangGenerator implements CodeGenerator
                                 sb.append("\t").append(propertyName)
                                     .append(generateWhitespace(length))
                                     .append(arrayspec)
-                                    .append(encodingToken.applicableTypeName())
+                                    .append(formatTypeName(encodingToken.applicableTypeName()))
                                     .append("\n");
                                 break;
 

@@ -13,8 +13,15 @@ examples_uk_co_real_logic_sbe_benchmarks_fix = { path = "../generated/rust/uk_co
 
 issue_435 = { path = "../generated/rust/issue435" }
 issue_895 = { path = "../generated/rust/issue895" }
+issue_972 = { path = "../generated/rust/issue972" }
+issue_984 = { path = "../generated/rust/issue984" }
+issue_987 = { path = "../generated/rust/issue987" }
+issue_1028 = { path = "../generated/rust/issue1028" }
+issue_1057 = { path = "../generated/rust/issue1057" }
+issue_1066 = { path = "../generated/rust/issue1066" }
 baseline_bigendian = { path = "../generated/rust/baseline-bigendian" }
 nested_composite_name = { path = "../generated/rust/nested-composite-name" }
+fixed_sized_primitive_array = { path = "../generated/rust/fixed_sized_primitive_array" }
 
 [dev-dependencies]
 criterion = "0.5"

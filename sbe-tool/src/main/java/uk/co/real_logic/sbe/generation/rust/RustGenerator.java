@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,8 +50,10 @@ public class RustGenerator implements CodeGenerator
 {
     static final String WRITE_BUF_TYPE = "WriteBuf";
     static final String READ_BUF_TYPE = "ReadBuf";
+    static final String ANONYMOUS_LIFETIME = "'_";
     static final String BUF_LIFETIME = "'a";
 
+    @SuppressWarnings("JavadocVariable")
     enum CodecType
     {
         Decoder
@@ -80,21 +82,26 @@ public class RustGenerator implements CodeGenerator
 
     private final Ir ir;
     private final RustOutputManager outputManager;
+    private final String crateVersion;
 
     /**
      * Create a new Rust language {@link CodeGenerator}.
      *
      * @param ir            for the messages and types.
+     * @param crateVersion  for the generated crate.
      * @param outputManager for generating the codecs to.
      */
     public RustGenerator(
         final Ir ir,
+        final String crateVersion,
         final OutputManager outputManager)
     {
         Verify.notNull(ir, "ir");
+        Verify.notNull(crateVersion, "crateVersion");
         Verify.notNull(outputManager, "outputManager");
 
         this.ir = ir;
+        this.crateVersion = crateVersion;
         this.outputManager = (RustOutputManager)outputManager;
     }
 
@@ -117,7 +124,7 @@ public class RustGenerator implements CodeGenerator
 
             indent(writer, 0, "[package]\n");
             indent(writer, 0, "name = \"%s\"\n", namespace);
-            indent(writer, 0, "version = \"0.1.0\"\n");
+            indent(writer, 0, "version = \"%s\"\n", crateVersion);
             indent(writer, 0, "authors = [\"sbetool\"]\n");
             indent(writer, 0, "description = \"%s\"\n", ir.description());
             indent(writer, 0, "edition = \"2021\"\n\n");
@@ -127,11 +134,11 @@ public class RustGenerator implements CodeGenerator
         }
 
         // lib.rs
-        final LibRsDef libRsDef = new LibRsDef(outputManager, ir.byteOrder());
+        final LibRsDef libRsDef = new LibRsDef(outputManager, ir.byteOrder(), schemaVersionType());
 
         generateEnums(ir, outputManager);
         generateBitSets(ir, outputManager);
-        generateComposites(ir, outputManager);
+        generateComposites(schemaVersionType(), ir, outputManager);
 
         for (final List<Token> tokens : ir.messages())
         {
@@ -152,25 +159,24 @@ public class RustGenerator implements CodeGenerator
             try (Writer out = outputManager.createOutput(codecModName))
             {
                 indent(out, 0, "use crate::*;\n\n");
-                indent(out, 0, "pub use encoder::%sEncoder;\n", formatStructName(msgToken.name()));
-                indent(out, 0, "pub use decoder::%sDecoder;\n\n", formatStructName(msgToken.name()));
+                indent(out, 0, "pub use decoder::%sDecoder;\n", formatStructName(msgToken.name()));
+                indent(out, 0, "pub use encoder::%sEncoder;\n\n", formatStructName(msgToken.name()));
+
+                indent(out, 0, "pub use crate::SBE_SCHEMA_ID;\n");
+                indent(out, 0, "pub use crate::SBE_SCHEMA_VERSION;\n");
+                indent(out, 0, "pub use crate::SBE_SEMANTIC_VERSION;\n\n");
+
                 final String blockLengthType = blockLengthType();
                 final String templateIdType = rustTypeName(ir.headerStructure().templateIdType());
-                final String schemaIdType = rustTypeName(ir.headerStructure().schemaIdType());
-                final String schemaVersionType = schemaVersionType();
-                final String semanticVersion = ir.semanticVersion() == null ? "" : ir.semanticVersion();
                 indent(out, 0, "pub const SBE_BLOCK_LENGTH: %s = %d;\n", blockLengthType, msgToken.encodedLength());
-                indent(out, 0, "pub const SBE_TEMPLATE_ID: %s = %d;\n", templateIdType, msgToken.id());
-                indent(out, 0, "pub const SBE_SCHEMA_ID: %s = %d;\n", schemaIdType, ir.id());
-                indent(out, 0, "pub const SBE_SCHEMA_VERSION: %s = %d;\n", schemaVersionType, ir.version());
-                indent(out, 0, "pub const SBE_SEMANTIC_VERSION: &str = \"%s\";\n\n", semanticVersion);
+                indent(out, 0, "pub const SBE_TEMPLATE_ID: %s = %d;\n\n", templateIdType, msgToken.id());
 
                 MessageCoderDef.generateEncoder(ir, out, msgToken, fields, groups, varData);
                 MessageCoderDef.generateDecoder(ir, out, msgToken, fields, groups, varData);
             }
         }
 
-        libRsDef.generate();
+        libRsDef.generate(ir);
     }
 
     String blockLengthType()
@@ -183,9 +189,19 @@ public class RustGenerator implements CodeGenerator
         return rustTypeName(ir.headerStructure().schemaVersionType());
     }
 
-    static String withLifetime(final String typeName)
+    static String withAnonymousLifetime(final String typeName)
     {
-        return format("%s<%s>", typeName, BUF_LIFETIME);
+        return withLifetime(typeName, ANONYMOUS_LIFETIME);
+    }
+
+    static String withBufLifetime(final String typeName)
+    {
+        return withLifetime(typeName, BUF_LIFETIME);
+    }
+
+    private static String withLifetime(final String typeName, final String lifetime)
+    {
+        return format("%s<%s>", typeName, lifetime);
     }
 
     static void appendImplWithLifetimeHeader(
@@ -357,7 +373,62 @@ public class RustGenerator implements CodeGenerator
         }
     }
 
-    private static void generatePrimitiveEncoder(
+    private static String rustNullLiteral(final Encoding encoding)
+    {
+        return generateRustLiteral(encoding.primitiveType(), encoding.applicableNullValue());
+    }
+
+
+    private static void generateRustDoc(
+        final StringBuilder sb,
+        final int level,
+        final Token typeToken,
+        final Encoding encoding) throws IOException
+    {
+        indent(sb, level, "/// - min value: %s\n", encoding.applicableMinValue());
+        indent(sb, level, "/// - max value: %s\n", encoding.applicableMaxValue());
+        indent(sb, level, "/// - null value: %s\n", rustNullLiteral(encoding));
+        indent(sb, level, "/// - characterEncoding: %s\n", encoding.characterEncoding());
+        indent(sb, level, "/// - semanticType: %s\n", encoding.semanticType());
+        indent(sb, level, "/// - encodedOffset: %d\n", typeToken.offset());
+        indent(sb, level, "/// - encodedLength: %d\n", typeToken.encodedLength());
+        indent(sb, level, "/// - version: %d\n", typeToken.version());
+    }
+
+    private static void generatePrimitiveArrayFromIterEncoder(
+        final StringBuilder sb,
+        final int level,
+        final Token typeToken,
+        final String name) throws IOException
+    {
+        final Encoding encoding = typeToken.encoding();
+        final PrimitiveType primitiveType = encoding.primitiveType();
+        final String rustPrimitiveType = rustTypeName(primitiveType);
+
+        indent(sb, level, "/// primitive array field '%s' from an Iterator\n", name);
+        generateRustDoc(sb, level, typeToken, encoding);
+        indent(sb, level, "#[inline]\n");
+        indent(sb, level, "pub fn %s_from_iter(&mut self, iter: impl Iterator<Item = %s>) {\n",
+            formatFunctionName(name), rustPrimitiveType);
+
+        indent(sb, level + 1, "let offset = self.%s;\n", getBufOffset(typeToken));
+        indent(sb, level + 1, "let buf = self.get_buf_mut();\n");
+        indent(sb, level + 1, "for (i, v) in iter.enumerate() {\n");
+
+        if (primitiveType.size() == 1)
+        {
+            indent(sb, level + 2, "buf.put_%s_at(offset + i, v);\n", rustPrimitiveType);
+        }
+        else
+        {
+            indent(sb, level + 2, "buf.put_%s_at(offset + i * %d, v);\n",
+                rustPrimitiveType, primitiveType.size());
+        }
+        indent(sb, level + 1, "}\n");
+        indent(sb, level, "}\n\n");
+    }
+
+    private static void generatePrimitiveArrayZeroPaddedEncoder(
         final StringBuilder sb,
         final int level,
         final Token typeToken,
@@ -367,34 +438,66 @@ public class RustGenerator implements CodeGenerator
         final PrimitiveType primitiveType = encoding.primitiveType();
         final String rustPrimitiveType = rustTypeName(primitiveType);
         final int arrayLength = typeToken.arrayLength();
-        if (arrayLength > 1)
+
+        indent(sb, level, "/// primitive array field '%s' with zero padding\n", name);
+        generateRustDoc(sb, level, typeToken, encoding);
+        indent(sb, level, "#[inline]\n");
+        indent(sb, level, "pub fn %s_zero_padded(&mut self, value: &[%s]) {\n",
+            formatFunctionName(name), rustPrimitiveType);
+
+        indent(sb, level + 1, "let iter = value.iter().copied().chain(std::iter::repeat(0_%s)).take(%d);\n",
+            rustPrimitiveType, arrayLength);
+
+        indent(sb, level + 1, "self.%s_from_iter(iter);\n", formatFunctionName(name));
+        indent(sb, level, "}\n\n");
+    }
+
+    private static void generatePrimitiveArrayEncoder(
+        final StringBuilder sb,
+        final int level,
+        final Token typeToken,
+        final String name) throws IOException
+    {
+        final Encoding encoding = typeToken.encoding();
+        final PrimitiveType primitiveType = encoding.primitiveType();
+        final String rustPrimitiveType = rustTypeName(primitiveType);
+        final int arrayLength = typeToken.arrayLength();
+
+        indent(sb, level, "#[inline]\n");
+        indent(sb, level, "pub fn %s_at(&mut self, index: usize, value: %s) {\n",
+            formatFunctionName(name), rustPrimitiveType);
+        indent(sb, level + 1, "let offset = self.%s;\n", getBufOffset(typeToken));
+        indent(sb, level + 1, "let buf = self.get_buf_mut();\n");
+
+        if (primitiveType.size() == 1)
         {
-            indent(sb, level, "/// primitive array field '%s'\n", name);
-            indent(sb, level, "/// - min value: %s\n", encoding.applicableMinValue());
-            indent(sb, level, "/// - max value: %s\n", encoding.applicableMaxValue());
-            indent(sb, level, "/// - null value: %s\n", encoding.applicableNullValue());
-            indent(sb, level, "/// - characterEncoding: %s\n", encoding.characterEncoding());
-            indent(sb, level, "/// - semanticType: %s\n", encoding.semanticType());
-            indent(sb, level, "/// - encodedOffset: %d\n", typeToken.offset());
-            indent(sb, level, "/// - encodedLength: %d\n", typeToken.encodedLength());
-            indent(sb, level, "/// - version: %d\n", typeToken.version());
-            indent(sb, level, "#[inline]\n");
-            indent(sb, level, "pub fn %s(&mut self, value: [%s; %d]) {\n",
-                formatFunctionName(name),
-                rustPrimitiveType,
-                arrayLength);
+            indent(sb, level + 1, "buf.put_%s_at(offset + index, value);\n", rustPrimitiveType);
+        }
+        else
+        {
+            indent(sb, level + 1, "buf.put_%s_at(offset + index * %d, value);\n",
+                rustPrimitiveType, primitiveType.size());
+        }
+        indent(sb, level, "}\n\n");
 
-            // NB: must create variable 'offset' before calling mutable self.get_buf_mut()
-            indent(sb, level + 1, "let offset = self.%s;\n", getBufOffset(typeToken));
-            indent(sb, level + 1, "let buf = self.get_buf_mut();\n");
+        indent(sb, level, "/// primitive array field '%s'\n", name);
+        generateRustDoc(sb, level, typeToken, encoding);
+        indent(sb, level, "#[inline]\n");
+        indent(sb, level, "pub fn %s(&mut self, value: &[%s]) {\n",
+            formatFunctionName(name), rustPrimitiveType);
 
-            if (rustPrimitiveType.equals("u8"))
-            {
-                indent(sb, level + 1, "buf.put_bytes_at(offset, value);\n");
-                indent(sb, level, "}\n\n");
-                return;
-            }
+        // NB: must create variable 'offset' before calling mutable self.get_buf_mut()
+        indent(sb, level + 1, "debug_assert_eq!(%d, value.len());\n", arrayLength);
+        indent(sb, level + 1, "let offset = self.%s;\n", getBufOffset(typeToken));
+        indent(sb, level + 1, "let buf = self.get_buf_mut();\n");
 
+        if (rustPrimitiveType.equals("u8"))
+        {
+            indent(sb, level + 1, "buf.put_slice_at(offset, value);\n");
+            indent(sb, level, "}\n\n");
+        }
+        else
+        {
             for (int i = 0; i < arrayLength; i++)
             {
                 if (i == 0)
@@ -412,33 +515,44 @@ public class RustGenerator implements CodeGenerator
 
             indent(sb, level, "}\n\n");
         }
-        else
-        {
-            if (encoding.presence() == Encoding.Presence.CONSTANT)
-            {
-                indent(sb, level, "// skipping CONSTANT %s\n\n", name);
-            }
-            else
-            {
-                indent(sb, level, "/// primitive field '%s'\n", name);
-                indent(sb, level, "/// - min value: %s\n", encoding.applicableMinValue());
-                indent(sb, level, "/// - max value: %s\n", encoding.applicableMaxValue());
-                indent(sb, level, "/// - null value: %s\n", encoding.applicableNullValue());
-                indent(sb, level, "/// - characterEncoding: %s\n", encoding.characterEncoding());
-                indent(sb, level, "/// - semanticType: %s\n", encoding.semanticType());
-                indent(sb, level, "/// - encodedOffset: %d\n", typeToken.offset());
-                indent(sb, level, "/// - encodedLength: %d\n", typeToken.encodedLength());
-                indent(sb, level, "#[inline]\n");
-                indent(sb, level, "pub fn %s(&mut self, value: %s) {\n",
-                    formatFunctionName(name),
-                    rustPrimitiveType);
 
-                // NB: must create variable 'offset' before calling mutable self.get_buf_mut()
-                indent(sb, level + 1, "let offset = self.%s;\n", getBufOffset(typeToken));
-                indent(sb, level + 1, "self.get_buf_mut().put_%s_at(offset, value);\n", rustPrimitiveType);
-                indent(sb, level, "}\n\n");
-            }
+        generatePrimitiveArrayFromIterEncoder(sb, level, typeToken, name);
+        generatePrimitiveArrayZeroPaddedEncoder(sb, level, typeToken, name);
+    }
+
+    private static void generatePrimitiveEncoder(
+        final StringBuilder sb,
+        final int level,
+        final Token typeToken,
+        final String name) throws IOException
+    {
+        final int arrayLength = typeToken.arrayLength();
+        if (arrayLength > 1)
+        {
+            generatePrimitiveArrayEncoder(sb, level, typeToken, name);
+            return;
         }
+
+        final Encoding encoding = typeToken.encoding();
+        if (encoding.presence() == Encoding.Presence.CONSTANT)
+        {
+            indent(sb, level, "// skipping CONSTANT %s\n\n", name);
+            return;
+        }
+
+        final PrimitiveType primitiveType = encoding.primitiveType();
+        final String rustPrimitiveType = rustTypeName(primitiveType);
+
+        indent(sb, level, "/// primitive field '%s'\n", name);
+        generateRustDoc(sb, level, typeToken, encoding);
+        indent(sb, level, "#[inline]\n");
+        indent(sb, level, "pub fn %s(&mut self, value: %s) {\n",
+            formatFunctionName(name), rustPrimitiveType);
+
+        // NB: must create variable 'offset' before calling mutable self.get_buf_mut()
+        indent(sb, level + 1, "let offset = self.%s;\n", getBufOffset(typeToken));
+        indent(sb, level + 1, "self.get_buf_mut().put_%s_at(offset, value);\n", rustPrimitiveType);
+        indent(sb, level, "}\n\n");
     }
 
     private static void generateEnumEncoder(
@@ -449,7 +563,9 @@ public class RustGenerator implements CodeGenerator
         final String name) throws IOException
     {
         final String referencedName = typeToken.referencedName();
-        final String enumType = formatStructName(referencedName == null ? typeToken.name() : referencedName);
+        final String enumType = format("%s::%s",
+            toLowerSnakeCase(referencedName == null ? typeToken.name() : referencedName),
+            formatStructName(referencedName == null ? typeToken.name() : referencedName));
 
         if (fieldToken.isConstantEncoding())
         {
@@ -479,7 +595,10 @@ public class RustGenerator implements CodeGenerator
     {
         final Encoding encoding = bitsetToken.encoding();
         final String rustPrimitiveType = rustTypeName(encoding.primitiveType());
-        final String structTypeName = formatStructName(bitsetToken.applicableTypeName());
+        final String referencedName = bitsetToken.referencedName();
+        final String structTypeName = format("%s::%s",
+            toLowerSnakeCase(referencedName == null ? bitsetToken.name() : referencedName),
+            formatStructName(bitsetToken.applicableTypeName()));
         indent(sb, level, "#[inline]\n");
         indent(sb, level, "pub fn %s(&mut self, value: %s) {\n", formatFunctionName(name), structTypeName);
 
@@ -496,7 +615,9 @@ public class RustGenerator implements CodeGenerator
         final String name) throws IOException
     {
         final String encoderName = toLowerSnakeCase(encoderName(name));
-        final String encoderTypeName = encoderName(formatStructName(typeToken.applicableTypeName()));
+        final String encoderTypeName = format("%s::%s",
+            codecModName(typeToken.referencedName() == null ? typeToken.name() : typeToken.referencedName()),
+            encoderName(formatStructName(typeToken.applicableTypeName())));
         indent(sb, level, "/// COMPOSITE ENCODER\n");
         indent(sb, level, "#[inline]\n");
         indent(sb, level, "pub fn %s(self) -> %2$s<Self> {\n",
@@ -556,7 +677,10 @@ public class RustGenerator implements CodeGenerator
         final String name) throws IOException
     {
         final String decoderName = toLowerSnakeCase(decoderName(name));
-        final String decoderTypeName = decoderName(formatStructName(typeToken.applicableTypeName()));
+        final String referencedName = typeToken.referencedName();
+        final String decoderTypeName = format("%s::%s",
+            codecModName(referencedName == null ? typeToken.name() : referencedName),
+            decoderName(formatStructName(typeToken.applicableTypeName())));
         indent(sb, level, "/// COMPOSITE DECODER\n");
         indent(sb, level, "#[inline]\n");
         if (fieldToken.version() > 0)
@@ -565,7 +689,7 @@ public class RustGenerator implements CodeGenerator
                 decoderName,
                 decoderTypeName);
 
-            indent(sb, level + 1, "if self.acting_version > 0 && self.acting_version < %d {\n", fieldToken.version());
+            indent(sb, level + 1, "if self.acting_version() < %d {\n", fieldToken.version());
             indent(sb, level + 2, "return Either::Left(self);\n");
             indent(sb, level + 1, "}\n\n");
 
@@ -575,7 +699,7 @@ public class RustGenerator implements CodeGenerator
         }
         else
         {
-            indent(sb, level, "pub fn %s(self) -> %2$s<Self> {\n",
+            indent(sb, level, "pub fn %s(self) -> %s<Self> {\n",
                 decoderName,
                 decoderTypeName);
 
@@ -593,13 +717,17 @@ public class RustGenerator implements CodeGenerator
     {
         final Encoding encoding = bitsetToken.encoding();
         final String rustPrimitiveType = rustTypeName(encoding.primitiveType());
-        final String structTypeName = formatStructName(bitsetToken.applicableTypeName());
+        final String referencedName = bitsetToken.referencedName();
+        final String structTypeName = format("%s::%s",
+            toLowerSnakeCase(referencedName == null ? bitsetToken.name() : referencedName),
+            formatStructName(bitsetToken.applicableTypeName()));
+        indent(sb, level, "/// BIT SET DECODER\n");
         indent(sb, level, "#[inline]\n");
         indent(sb, level, "pub fn %s(&self) -> %s {\n", formatFunctionName(name), structTypeName);
 
         if (bitsetToken.version() > 0)
         {
-            indent(sb, level + 1, "if self.acting_version > 0 && self.acting_version < %d {\n", bitsetToken.version());
+            indent(sb, level + 1, "if self.acting_version() < %d {\n", bitsetToken.version());
             indent(sb, level + 2, "return %s::default();\n", structTypeName);
             indent(sb, level + 1, "}\n\n");
         }
@@ -659,8 +787,8 @@ public class RustGenerator implements CodeGenerator
 
         if (fieldToken.version() > 0)
         {
-            indent(sb, level + 1, "if self.acting_version > 0 && self.acting_version < %d {\n", fieldToken.version());
-            indent(sb, level + 2, "return [%s; %d];\n", encoding.applicableNullValue(), arrayLength);
+            indent(sb, level + 1, "if self.acting_version() < %d {\n", fieldToken.version());
+            indent(sb, level + 2, "return [%s; %d];\n", rustNullLiteral(encoding), arrayLength);
             indent(sb, level + 1, "}\n\n");
         }
 
@@ -753,7 +881,7 @@ public class RustGenerator implements CodeGenerator
         final String rustPrimitiveType = rustTypeName(primitiveType);
         final String characterEncoding = encoding.characterEncoding();
         indent(sb, level, "/// primitive field - '%s' { null_value: '%s' }\n",
-            encoding.presence(), encoding.applicableNullValue());
+            encoding.presence(), rustNullLiteral(encoding));
 
         if (characterEncoding != null)
         {
@@ -768,7 +896,7 @@ public class RustGenerator implements CodeGenerator
 
         if (fieldToken.version() > 0)
         {
-            indent(sb, level + 1, "if self.acting_version > 0 && self.acting_version < %d {\n", fieldToken.version());
+            indent(sb, level + 1, "if self.acting_version() < %d {\n", fieldToken.version());
             indent(sb, level + 2, "return None;\n");
             indent(sb, level + 1, "}\n\n");
         }
@@ -777,15 +905,14 @@ public class RustGenerator implements CodeGenerator
             rustPrimitiveType,
             getBufOffset(fieldToken));
 
-
-        final String literal = generateRustLiteral(primitiveType, encoding.applicableNullValue().toString());
-        if (literal.endsWith("::NAN"))
+        final String nullLiteral = rustNullLiteral(encoding);
+        if (nullLiteral.endsWith("::NAN"))
         {
             indent(sb, level + 1, "if value.is_nan() {\n");
         }
         else
         {
-            indent(sb, level + 1, "if value == %s {\n", literal);
+            indent(sb, level + 1, "if value == %s {\n", nullLiteral);
         }
 
         indent(sb, level + 2, "None\n");
@@ -821,9 +948,8 @@ public class RustGenerator implements CodeGenerator
 
         if (fieldToken.version() > 0)
         {
-            indent(sb, level + 1, "if self.acting_version > 0 && self.acting_version < %d {\n", fieldToken.version());
-            indent(sb, level + 2, "return %s;\n",
-                generateRustLiteral(encoding.primitiveType(), encoding.applicableNullValue().toString()));
+            indent(sb, level + 1, "if self.acting_version() < %d {\n", fieldToken.version());
+            indent(sb, level + 2, "return %s;\n", rustNullLiteral(encoding));
             indent(sb, level + 1, "}\n\n");
         }
 
@@ -842,7 +968,9 @@ public class RustGenerator implements CodeGenerator
         final String name) throws IOException
     {
         final String referencedName = typeToken.referencedName();
-        final String enumType = formatStructName(referencedName == null ? typeToken.name() : referencedName);
+        final String enumType = format("%s::%s",
+            toLowerSnakeCase(referencedName == null ? typeToken.name() : referencedName),
+            formatStructName(referencedName == null ? typeToken.name() : referencedName));
 
         if (fieldToken.isConstantEncoding())
         {
@@ -868,7 +996,7 @@ public class RustGenerator implements CodeGenerator
 
             if (fieldToken.version() > 0)
             {
-                indent(sb, level + 1, "if self.acting_version < %d {\n", fieldToken.version());
+                indent(sb, level + 1, "if self.acting_version() < %d {\n", fieldToken.version());
                 indent(sb, level + 2, "return %s::default();\n", enumType);
                 indent(sb, level + 1, "}\n\n");
             }
@@ -881,6 +1009,7 @@ public class RustGenerator implements CodeGenerator
     }
 
     static void generateDecoderGroups(
+        final String schemaVersionType,
         final StringBuilder sb,
         final List<Token> tokens,
         final int level,
@@ -928,7 +1057,7 @@ public class RustGenerator implements CodeGenerator
                 indent(sb, level, "pub fn %s(self) -> Option<%2$s<Self>> {\n",
                     formatFunctionName(groupName), groupName);
 
-                indent(sb, level + 1, "if self.acting_version < %d {\n", groupToken.version());
+                indent(sb, level + 1, "if self.acting_version() < %d {\n", groupToken.version());
                 indent(sb, level + 2, "return None;\n");
                 indent(sb, level + 1, "}\n\n");
 
@@ -944,7 +1073,7 @@ public class RustGenerator implements CodeGenerator
             indent(sb, level, "}\n\n");
 
             final SubGroup subGroup = parentDef.addSubGroup(groupName, level, groupToken);
-            subGroup.generateDecoder(tokens, fields, groups, varData, index);
+            subGroup.generateDecoder(schemaVersionType, tokens, fields, groups, varData, index);
         }
     }
 
@@ -976,7 +1105,7 @@ public class RustGenerator implements CodeGenerator
             {
                 if (varDataToken.version() > 0)
                 {
-                    indent(sb, level + 1, "if self.acting_version > 0 && self.acting_version < %d {\n",
+                    indent(sb, level + 1, "if self.acting_version() < %d {\n",
                         varDataToken.version());
                     indent(sb, level + 2, "return (self.parent.as_ref().unwrap().get_limit(), 0);\n");
                     indent(sb, level + 1, "}\n\n");
@@ -992,7 +1121,7 @@ public class RustGenerator implements CodeGenerator
             {
                 if (varDataToken.version() > 0)
                 {
-                    indent(sb, level + 1, "if self.acting_version > 0 && self.acting_version < %d {\n",
+                    indent(sb, level + 1, "if self.acting_version() < %d {\n",
                         varDataToken.version());
                     indent(sb, level + 2, "return (self.get_limit(), 0);\n");
                     indent(sb, level + 1, "}\n\n");
@@ -1012,7 +1141,7 @@ public class RustGenerator implements CodeGenerator
 
             if (varDataToken.version() > 0)
             {
-                indent(sb, level + 1, "if self.acting_version > 0 && self.acting_version < %d {\n",
+                indent(sb, level + 1, "if self.acting_version() < %d {\n",
                     varDataToken.version());
                 indent(sb, level + 2, "return &[] as &[u8];\n");
                 indent(sb, level + 1, "}\n\n");
@@ -1097,7 +1226,7 @@ public class RustGenerator implements CodeGenerator
 
         indent(writer, 0, "impl core::fmt::Debug for %s {\n", bitSetType);
         indent(writer, 1, "#[inline]\n");
-        indent(writer, 1, "fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {\n");
+        indent(writer, 1, "fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {\n");
         indent(writer, 2, "write!(fmt, \"%s[", bitSetType);
 
         final StringBuilder builder = new StringBuilder();
@@ -1133,14 +1262,14 @@ public class RustGenerator implements CodeGenerator
         final Appendable out,
         final String typeName) throws IOException
     {
-        indent(out, 1, "impl<%s> %s for %s {\n", BUF_LIFETIME, withLifetime("Writer"), withLifetime(typeName));
+        indent(out, 1, "impl<%s> %s for %s {\n", BUF_LIFETIME, withBufLifetime("Writer"), withBufLifetime(typeName));
         indent(out, 2, "#[inline]\n");
         indent(out, 2, "fn get_buf_mut(&mut self) -> &mut WriteBuf<'a> {\n");
         indent(out, 3, "&mut self.buf\n");
         indent(out, 2, "}\n");
         indent(out, 1, "}\n\n");
 
-        indent(out, 1, "impl<%s> %s for %s {\n", BUF_LIFETIME, withLifetime("Encoder"), withLifetime(typeName));
+        indent(out, 1, "impl<%s> %s for %s {\n", BUF_LIFETIME, withBufLifetime("Encoder"), withBufLifetime(typeName));
         indent(out, 2, "#[inline]\n");
         indent(out, 2, "fn get_limit(&self) -> usize {\n");
         indent(out, 3, "self.limit\n");
@@ -1154,17 +1283,25 @@ public class RustGenerator implements CodeGenerator
     }
 
     static void appendImplDecoderTrait(
+        final String schemaVersionType,
         final Appendable out,
         final String typeName) throws IOException
     {
-        indent(out, 1, "impl<%s> %s for %s {\n", BUF_LIFETIME, withLifetime("Reader"), withLifetime(typeName));
+        indent(out, 1, "impl %s for %s {\n", "ActingVersion", withAnonymousLifetime(typeName));
+        indent(out, 2, "#[inline]\n");
+        indent(out, 2, "fn acting_version(&self) -> %s {\n", schemaVersionType);
+        indent(out, 3, "self.acting_version\n");
+        indent(out, 2, "}\n");
+        indent(out, 1, "}\n\n");
+
+        indent(out, 1, "impl<%s> %s for %s {\n", BUF_LIFETIME, withBufLifetime("Reader"), withBufLifetime(typeName));
         indent(out, 2, "#[inline]\n");
         indent(out, 2, "fn get_buf(&self) -> &ReadBuf<'a> {\n");
         indent(out, 3, "&self.buf\n");
         indent(out, 2, "}\n");
         indent(out, 1, "}\n\n");
 
-        indent(out, 1, "impl<%s> %s for %s {\n", BUF_LIFETIME, withLifetime("Decoder"), withLifetime(typeName));
+        indent(out, 1, "impl<%s> %s for %s {\n", BUF_LIFETIME, withBufLifetime("Decoder"), withBufLifetime(typeName));
         indent(out, 2, "#[inline]\n");
         indent(out, 2, "fn get_limit(&self) -> usize {\n");
         indent(out, 3, "self.limit\n");
@@ -1235,14 +1372,31 @@ public class RustGenerator implements CodeGenerator
         // null value
         {
             final Encoding encoding = messageBody.get(0).encoding();
-            final CharSequence nullVal = generateRustLiteral(encoding.primitiveType(),
-                encoding.applicableNullValue().toString());
+            final CharSequence nullVal = rustNullLiteral(encoding);
             indent(writer, 1, "#[default]\n");
             indent(writer, 1, "NullVal = %s, \n", nullVal);
         }
         indent(writer, 0, "}\n");
 
         // From impl
+        generateFromPrimitiveForEnum(enumRustName, primitiveType, messageBody, writer);
+
+        // Into impl
+        generateFromEnumForPrimitive(enumRustName, primitiveType, messageBody, writer);
+
+        // FromStr impl
+        generateFromStrImplForEnum(enumRustName, messageBody, writer);
+
+        // Display impl
+        generateDisplayImplForEnum(enumRustName, primitiveType, messageBody, writer);
+    }
+
+    private static void generateFromPrimitiveForEnum(
+        final String enumRustName,
+        final String primitiveType,
+        final List<Token> messageBody,
+        final Appendable writer) throws IOException
+    {
         indent(writer, 0, "impl From<%s> for %s {\n", primitiveType, enumRustName);
         indent(writer, 1, "#[inline]\n");
         indent(writer, 1, "fn from(v: %s) -> Self {\n", primitiveType);
@@ -1262,7 +1416,78 @@ public class RustGenerator implements CodeGenerator
         indent(writer, 0, "}\n");
     }
 
+    private static void generateFromEnumForPrimitive(
+        final String enumRustName,
+        final String primitiveType,
+        final List<Token> messageBody,
+        final Appendable writer) throws IOException
+    {
+        indent(writer, 0, "impl From<%s> for %s {\n", enumRustName, primitiveType);
+        indent(writer, 1, "#[inline]\n");
+        indent(writer, 1, "fn from(v: %s) -> Self {\n", enumRustName);
+        indent(writer, 2, "match v {\n");
+
+        for (final Token token : messageBody)
+        {
+            final Encoding encoding = token.encoding();
+            final String literal = generateRustLiteral(encoding.primitiveType(), encoding.constValue().toString());
+            indent(writer, 3, "%s::%s => %s, \n", enumRustName, token.name(), literal);
+        }
+
+        {
+            final Encoding encoding = messageBody.get(0).encoding();
+            final CharSequence nullVal = rustNullLiteral(encoding);
+            indent(writer, 3, "%s::NullVal => %s,\n", enumRustName, nullVal);
+        }
+        indent(writer, 2, "}\n");
+        indent(writer, 1, "}\n");
+        indent(writer, 0, "}\n");
+    }
+
+    private static void generateFromStrImplForEnum(
+        final String enumRustName,
+        final List<Token> messageBody,
+        final Appendable writer) throws IOException
+    {
+        indent(writer, 0, "impl core::str::FromStr for %s {\n", enumRustName);
+        indent(writer, 1, "type Err = ();\n\n");
+        indent(writer, 1, "#[inline]\n");
+        indent(writer, 1, "fn from_str(v: &str) -> core::result::Result<Self, Self::Err> {\n");
+        indent(writer, 2, "match v {\n");
+        for (final Token token : messageBody)
+        {
+            indent(writer, 3, "\"%1$s\" => Ok(Self::%1$s), \n", token.name());
+        }
+        // default => NullVal
+        indent(writer, 3, "_ => Ok(Self::NullVal),\n");
+        indent(writer, 2, "}\n");
+        indent(writer, 1, "}\n");
+        indent(writer, 0, "}\n");
+    }
+
+    private static void generateDisplayImplForEnum(
+        final String enumRustName,
+        final String primitiveType,
+        final List<Token> messageBody,
+        final Appendable writer) throws IOException
+    {
+        indent(writer, 0, "impl core::fmt::Display for %s {\n", enumRustName);
+        indent(writer, 1, "#[inline]\n");
+        indent(writer, 1, "fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {\n");
+        indent(writer, 2, "match self {\n");
+        for (final Token token : messageBody)
+        {
+            indent(writer, 3, "Self::%1$s => write!(f, \"%1$s\"), \n", token.name());
+        }
+        // default => Err
+        indent(writer, 3, "Self::NullVal => write!(f, \"NullVal\"),\n");
+        indent(writer, 2, "}\n");
+        indent(writer, 1, "}\n");
+        indent(writer, 0, "}\n");
+    }
+
     private static void generateComposites(
+        final String schemaVersionType,
         final Ir ir,
         final RustOutputManager outputManager) throws IOException
     {
@@ -1270,12 +1495,13 @@ public class RustGenerator implements CodeGenerator
         {
             if (!tokens.isEmpty() && tokens.get(0).signal() == Signal.BEGIN_COMPOSITE)
             {
-                generateComposite(tokens, outputManager);
+                generateComposite(schemaVersionType, tokens, outputManager);
             }
         }
     }
 
     private static void generateComposite(
+        final String schemaVersionType,
         final List<Token> tokens,
         final RustOutputManager outputManager) throws IOException
     {
@@ -1298,7 +1524,7 @@ public class RustGenerator implements CodeGenerator
 
             generateCompositeEncoder(tokens, encoderName(compositeName), out);
             indent(out, 0, "\n");
-            generateCompositeDecoder(tokens, decoderName(compositeName), out);
+            generateCompositeDecoder(schemaVersionType, tokens, decoderName(compositeName), out);
         }
     }
 
@@ -1342,12 +1568,23 @@ public class RustGenerator implements CodeGenerator
     }
 
     static void appendImplReaderForComposite(
+        final String schemaVersionType,
+        final int version,
         final Appendable out,
         final int level,
         final String name) throws IOException
     {
+        indent(out, level, "impl<'a, P> ActingVersion for %s<P> where P: Reader<'a> + ActingVersion + Default {\n",
+            name);
+        indent(out, level + 1, "#[inline]\n");
+        indent(out, level + 1, "fn acting_version(&self) -> %s {\n", schemaVersionType);
+        indent(out, level + 2, "self.parent.as_ref().unwrap().acting_version()\n");
+        indent(out, level + 1, "}\n");
+        indent(out, level, "}\n\n");
+
         // impl Reader...
-        indent(out, level, "impl<'a, P> Reader<'a> for %s<P> where P: Reader<'a> + Default {\n", name);
+        indent(out, level, "impl<'a, P> Reader<'a> for %s<P> where P: Reader<'a> %s+ Default {\n",
+            name, version > 0 ? "+ ActingVersion " : "");
         indent(out, level + 1, "#[inline]\n");
         indent(out, level + 1, "fn get_buf(&self) -> &ReadBuf<'a> {\n");
         indent(out, level + 2, "self.parent.as_ref().expect(\"parent missing\").get_buf()\n");
@@ -1356,14 +1593,17 @@ public class RustGenerator implements CodeGenerator
     }
 
     static void appendImplDecoderForComposite(
+        final String schemaVersionType,
+        final int version,
         final Appendable out,
         final int level,
         final String name) throws IOException
     {
-        appendImplReaderForComposite(out, level, name);
+        appendImplReaderForComposite(schemaVersionType, version, out, level, name);
 
         // impl Decoder...
-        indent(out, level, "impl<'a, P> Decoder<'a> for %s<P> where P: Decoder<'a> + Default {\n", name);
+        indent(out, level, "impl<'a, P> Decoder<'a> for %s<P> where P: Decoder<'a> + ActingVersion + Default {\n",
+            name);
         indent(out, level + 1, "#[inline]\n");
         indent(out, level + 1, "fn get_limit(&self) -> usize {\n");
         indent(out, level + 2, "self.parent.as_ref().expect(\"parent missing\").get_limit()\n");
@@ -1439,6 +1679,7 @@ public class RustGenerator implements CodeGenerator
     }
 
     private static void generateCompositeDecoder(
+        final String schemaVersionType,
         final List<Token> tokens,
         final String decoderName,
         final Writer out) throws IOException
@@ -1452,10 +1693,14 @@ public class RustGenerator implements CodeGenerator
         indent(out, 2, "offset: usize,\n");
         indent(out, 1, "}\n\n");
 
-        appendImplReaderForComposite(out, 1, decoderName);
+        // The version of the composite type is the greatest version of its fields.
+        final int version = tokens.stream().mapToInt(Token::version).max().orElse(0);
+
+        appendImplReaderForComposite(schemaVersionType, version, out, 1, decoderName);
 
         // impl<'a, P> start
-        indent(out, 1, "impl<'a, P> %s<P> where P: Reader<'a> + Default {\n", decoderName);
+        indent(out, 1, "impl<'a, P> %s<P> where P: Reader<'a> %s+ Default {\n",
+            decoderName, version > 0 ? "+ ActingVersion " : "");
         indent(out, 2, "pub fn wrap(mut self, parent: P, offset: usize) -> Self {\n");
         indent(out, 3, "self.parent = Some(parent);\n");
         indent(out, 3, "self.offset = offset;\n");

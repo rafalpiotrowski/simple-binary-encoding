@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -197,7 +197,7 @@ public class PrimitiveValue
     /**
      * Maximum value representation for a single precision 32-bit floating point type.
      */
-    public static final float MIN_VALUE_FLOAT = Float.MIN_VALUE;
+    public static final float MIN_VALUE_FLOAT = -Float.MAX_VALUE;
 
     /**
      * Maximum value representation for a single precision 32-bit floating point type.
@@ -212,7 +212,7 @@ public class PrimitiveValue
     /**
      * Minimum value representation for a double precision 64-bit floating point type.
      */
-    public static final double MIN_VALUE_DOUBLE = Double.MIN_VALUE;
+    public static final double MIN_VALUE_DOUBLE = -Double.MAX_VALUE;
 
     /**
      * Maximum value representation for a double precision 64-bit floating point type.
@@ -308,7 +308,7 @@ public class PrimitiveValue
     }
 
     /**
-     * Parse constant value string and set representation based on type
+     * Parse constant value string and set representation based on type.
      *
      * @param value         expressed as a String.
      * @param primitiveType that this is supposed to be.
@@ -367,7 +367,7 @@ public class PrimitiveValue
     }
 
     /**
-     * Parse constant value string and set representation based on type
+     * Parse constant value string and set representation based on type.
      *
      * @param value             expressed as a String.
      * @param primitiveType     that this is supposed to be.
@@ -392,7 +392,7 @@ public class PrimitiveValue
     }
 
     /**
-     * Parse constant value string and set representation based on type, length, and characterEncoding
+     * Parse constant value string and set representation based on type, length, and characterEncoding.
      *
      * @param value             expressed as a String.
      * @param length            of the type.
@@ -469,7 +469,7 @@ public class PrimitiveValue
     }
 
     /**
-     * Return byte array value for this PrimitiveValue given a particular type
+     * Return byte array value for this PrimitiveValue given a particular type.
      *
      * @param type of this value.
      * @return value expressed as a byte array.

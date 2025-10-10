@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,6 @@ import org.agrona.MutableDirectBuffer;
 import org.agrona.generation.CompilerUtil;
 import org.agrona.generation.StringWriterOutputManager;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledForJreRange;
-import org.junit.jupiter.api.condition.JRE;
 import uk.co.real_logic.sbe.Tests;
 import uk.co.real_logic.sbe.ir.Ir;
 import uk.co.real_logic.sbe.xml.IrGenerator;
@@ -44,7 +42,6 @@ public class QualifiedYieldTest
     private final StringWriterOutputManager outputManager = new StringWriterOutputManager();
 
     @Test
-    @EnabledForJreRange(min = JRE.JAVA_17)
     void shouldGenerateValidJava() throws Exception
     {
         try (InputStream in = Tests.getLocalResource("issue910.xml"))

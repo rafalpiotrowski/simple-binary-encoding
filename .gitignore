@@ -19,14 +19,16 @@
 build-local.properties
 deps
 */bin
-build
-.gradle
-target
+build/
+!buildSrc/
+!buildSrc/src/**/build
+.gradle/
+target/
 GTAGS
 GRTAGS
 GPATH
 prop
-out
+out/
 .vs/
 .vscode
 
@@ -65,31 +67,18 @@ cppbuild/Win32
 
 # golang
 gocode/pkg
-gocode/src/baseline/*.go
-!gocode/src/baseline/*_test.go
-gocode/src/baseline-bigendian/*.go
-!gocode/src/baseline-bigendian/*_test.go
-gocode/src/composite/*.go
-!gocode/src/composite/*_test.go
-gocode/src/composite_elements/*.go
-!gocode/src/composite_elements/*_test.go
-gocode/src/since-deprecated/*.go
-!gocode/src/since-deprecated/*_test.go
-gocode/src/group_with_data*/*.go
-!gocode/src/group_with_data*/*_test.go
-gocode/src/mktdata/*.go
-!gocode/src/mktdata/*_test.go
-gocode/src/simple/*.go
-!gocode/src/simple/*_test.go
-gocode/src/issue*/*.go
-!gocode/src/issue*/*_test.go
-gocode/src/*/*/*.go
-!gocode/src/*/*/*_test.go
-gocode/src/example-schema/example-schema*
-gocode/src/example-schema/cpu.out
-gocode/src/example-socket-clientserver/example-socket-clientserver
-gocode/src/extension
-gocode/src/extension2
+gocode/*/pkg
+gocode/struct/src/*/*.go
+!gocode/struct/src/*/*_test.go
+gocode/struct/src/*/*/*.go
+!gocode/struct/src/*/*/*_test.go
+gocode/struct/src/example-schema/example-schema*
+gocode/struct/src/example-socket-clientserver/example-socket-clientserver
+gocode/flyweight/src/*/*.go
+!gocode/flyweight/src/*/*_test.go
+gocode/flyweight/src/*/*/*.go
+!gocode/flyweight/src/*/*/*_test.go
+gocode/flyweight/src/otf/code-generation-schema.sbeir
 
 # csharp
 csharp/*/bin
@@ -107,6 +96,7 @@ csharp/sbe-generated/since-deprecated
 csharp/sbe-generated/order_check
 csharp/sbe-generated/mktdata/*.cs
 csharp/sbe-generated/uk_co_real_logic_sbe_benchmarks_fix
+csharp/sbe-generated/test_message_schema
 csharp/sbe-tests/*.sbe
 csharp/nuget/
 csharp/csharp.sln.DotSettings.user
@@ -118,5 +108,8 @@ rust/Cargo.lock
 # Mac
 .DS_Store
 /sbe-tool/src/main/golang/uk_co_real_logic_sbe_ir_generated/
+
+# JQwik
+*.jqwik-database
 
 /generated/

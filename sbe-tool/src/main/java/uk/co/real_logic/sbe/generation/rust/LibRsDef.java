@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
  */
 package uk.co.real_logic.sbe.generation.rust;
 
+import uk.co.real_logic.sbe.ir.Ir;
+
 import java.io.IOException;
 import java.io.Writer;
 import java.nio.ByteOrder;
@@ -25,8 +27,13 @@ import java.util.LinkedHashSet;
 import java.util.stream.Stream;
 
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
-import static uk.co.real_logic.sbe.generation.rust.RustGenerator.*;
-import static uk.co.real_logic.sbe.generation.rust.RustUtil.*;
+import static uk.co.real_logic.sbe.generation.rust.RustGenerator.BUF_LIFETIME;
+import static uk.co.real_logic.sbe.generation.rust.RustGenerator.READ_BUF_TYPE;
+import static uk.co.real_logic.sbe.generation.rust.RustGenerator.WRITE_BUF_TYPE;
+import static uk.co.real_logic.sbe.generation.rust.RustUtil.TYPE_NAME_BY_PRIMITIVE_TYPE_MAP;
+import static uk.co.real_logic.sbe.generation.rust.RustUtil.indent;
+import static uk.co.real_logic.sbe.generation.rust.RustUtil.rustTypeName;
+import static uk.co.real_logic.sbe.generation.rust.RustUtil.toLowerSnakeCase;
 
 /**
  * Generates `lib.rs` specific code.
@@ -35,28 +42,33 @@ class LibRsDef
 {
     private final RustOutputManager outputManager;
     private final ByteOrder byteOrder;
+    private final String schemaVersionType;
 
     /**
-     * Create a new 'lib.rs' for the library being generated
+     * Create a new 'lib.rs' for the library being generated.
      *
-     * @param outputManager for generating the codecs to.
-     * @param byteOrder for the Encoding.
+     * @param outputManager     for generating the codecs to.
+     * @param byteOrder         for the Encoding.
+     * @param schemaVersionType for acting_version type.
      */
     LibRsDef(
         final RustOutputManager outputManager,
-        final ByteOrder byteOrder)
+        final ByteOrder byteOrder,
+        final String schemaVersionType)
     {
         this.outputManager = outputManager;
         this.byteOrder = byteOrder;
+        this.schemaVersionType = schemaVersionType;
     }
 
-    void generate() throws IOException
+    void generate(final Ir ir) throws IOException
     {
         try (Writer libRs = outputManager.createOutput("lib"))
         {
             indent(libRs, 0, "#![forbid(unsafe_code)]\n");
-            indent(libRs, 0, "#![allow(clippy::upper_case_acronyms)]\n");
-            indent(libRs, 0, "#![allow(non_camel_case_types)]\n");
+            indent(libRs, 0, "#![allow(clippy::all)]\n");
+            indent(libRs, 0, "#![allow(non_camel_case_types)]\n\n");
+            indent(libRs, 0, "#![allow(ambiguous_glob_reexports)]\n\n");
             indent(libRs, 0, "use ::core::{convert::TryInto};\n\n");
 
             final ArrayList<String> modules = new ArrayList<>();
@@ -68,6 +80,7 @@ class LibRsDef
                     .filter((fileName) -> fileName.endsWith(".rs"))
                     .filter((fileName) -> !fileName.equals("lib.rs"))
                     .map((fileName) -> fileName.substring(0, fileName.length() - 3))
+                    .sorted()
                     .forEach(modules::add);
             }
 
@@ -78,18 +91,13 @@ class LibRsDef
             }
             indent(libRs, 0, "\n");
 
-            // add re-export of modules
-            for (final String module : modules)
-            {
-                indent(libRs, 0, "pub use crate::%s::*;\n", toLowerSnakeCase(module));
-            }
-            indent(libRs, 0, "\n");
+            generateSbeSchemaConsts(libRs, ir);
 
             generateSbeErrorEnum(libRs);
             generateEitherEnum(libRs);
 
             generateEncoderTraits(libRs);
-            generateDecoderTraits(libRs);
+            generateDecoderTraits(schemaVersionType, libRs);
 
             generateReadBuf(libRs, byteOrder);
             generateWriteBuf(libRs, byteOrder);
@@ -108,8 +116,12 @@ class LibRsDef
         indent(writer, 0, "}\n\n");
     }
 
-    static void generateDecoderTraits(final Writer writer) throws IOException
+    static void generateDecoderTraits(final String schemaVersionType, final Writer writer) throws IOException
     {
+        indent(writer, 0, "pub trait ActingVersion {\n");
+        indent(writer, 1, "fn acting_version(&self) -> %s;\n", schemaVersionType);
+        indent(writer, 0, "}\n\n");
+
         indent(writer, 0, "pub trait Reader<'a>: Sized {\n");
         indent(writer, 1, "fn get_buf(&self) -> &ReadBuf<'a>;\n");
         indent(writer, 0, "}\n\n");
@@ -118,6 +130,17 @@ class LibRsDef
         indent(writer, 1, "fn get_limit(&self) -> usize;\n");
         indent(writer, 1, "fn set_limit(&mut self, limit: usize);\n");
         indent(writer, 0, "}\n\n");
+    }
+
+    static void generateSbeSchemaConsts(final Writer writer, final Ir ir) throws IOException
+    {
+        final String schemaIdType = rustTypeName(ir.headerStructure().schemaIdType());
+        final String schemaVersionType = rustTypeName(ir.headerStructure().schemaVersionType());
+        final String semanticVersion = ir.semanticVersion() == null ? "" : ir.semanticVersion();
+
+        indent(writer, 0, "pub const SBE_SCHEMA_ID: %s = %d;\n", schemaIdType, ir.id());
+        indent(writer, 0, "pub const SBE_SCHEMA_VERSION: %s = %d;\n", schemaVersionType, ir.version());
+        indent(writer, 0, "pub const SBE_SEMANTIC_VERSION: &str = \"%s\";\n\n", semanticVersion);
     }
 
     static void generateSbeErrorEnum(final Writer writer) throws IOException
@@ -163,15 +186,11 @@ class LibRsDef
         indent(writer, 0, "}\n");
 
         // impl ReadBuf ...
+        indent(writer, 0, "#[allow(dead_code)]\n");
         indent(writer, 0, "impl<%s> %s<%s> {\n", BUF_LIFETIME, READ_BUF_TYPE, BUF_LIFETIME);
         indent(writer, 1, "#[inline]\n");
         indent(writer, 1, "pub fn new(data: &%s [u8]) -> Self {\n", BUF_LIFETIME);
         indent(writer, 2, "Self { data }\n");
-        indent(writer, 1, "}\n\n");
-
-        indent(writer, 1, "#[inline]\n");
-        indent(writer, 1, "fn get_bytes<const COUNT: usize>(slice: &[u8]) -> [u8; COUNT] {\n");
-        indent(writer, 2, "slice.try_into().expect(\"slice with incorrect length\")\n");
         indent(writer, 1, "}\n\n");
 
         indent(writer, 1, "#[inline]\n");
@@ -225,8 +244,8 @@ class LibRsDef
 
         indent(writer, 1, "#[inline]\n");
         indent(writer, 1,
-            "pub fn put_bytes_at<const COUNT: usize>(&mut self, index: usize, bytes: [u8; COUNT]) -> usize {\n");
-        indent(writer, 2, "self.data[index..index + COUNT].copy_from_slice(&bytes);\n");
+            "pub fn put_bytes_at<const COUNT: usize>(&mut self, index: usize, bytes: &[u8; COUNT]) -> usize {\n");
+        indent(writer, 2, "self.data[index..index + COUNT].copy_from_slice(bytes);\n");
         indent(writer, 2, "COUNT\n");
         indent(writer, 1, "}\n\n");
 
@@ -245,7 +264,7 @@ class LibRsDef
             // put_<primitive>_at
             indent(writer, 1, "#[inline]\n");
             indent(writer, 1, "pub fn put_%1$s_at(&mut self, index: usize, value: %1$s) {\n", primitiveType);
-            indent(writer, 2, "self.put_bytes_at(index, %s::to_%s_bytes(value));\n", primitiveType, endianness);
+            indent(writer, 2, "self.put_bytes_at(index, &%s::to_%s_bytes(value));\n", primitiveType, endianness);
             indent(writer, 1, "}\n\n");
         }
 
@@ -257,7 +276,14 @@ class LibRsDef
         indent(writer, 2, "dest.clone_from_slice(src);\n");
         indent(writer, 2, "len\n");
         indent(writer, 1, "}\n");
+        indent(writer, 0, "}\n");
 
+        // impl From<WriteBuf> for &[u8]
+        indent(writer, 0, "impl<%s> From<&%1$s mut %2$s<%1$s>> for &%1$s mut [u8] {\n", BUF_LIFETIME, WRITE_BUF_TYPE);
+        indent(writer, 1, "#[inline]\n");
+        indent(writer, 1, "fn from(buf: &%s mut %2$s<%1$s>) -> &%1$s mut [u8] {\n", BUF_LIFETIME, WRITE_BUF_TYPE);
+        indent(writer, 2, "buf.data\n");
+        indent(writer, 1, "}\n");
         indent(writer, 0, "}\n\n");
     }
 }

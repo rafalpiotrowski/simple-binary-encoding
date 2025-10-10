@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -613,7 +613,7 @@ public class CGenerator implements CodeGenerator
                 "    return ret;\n" +
                 "}\n",
                 propertyName,
-                generateStringViewNotPresentCondition(token.version()),
+                generateStringViewNotPresentCondition(token.version(), outermostStruct),
                 lengthOfLengthField,
                 lengthCType,
                 structName,
@@ -1032,7 +1032,9 @@ public class CGenerator implements CodeGenerator
             sinceVersion);
     }
 
-    private static CharSequence generateStringViewNotPresentCondition(final int sinceVersion)
+    private static CharSequence generateStringViewNotPresentCondition(
+        final int sinceVersion,
+        final String outermostStruct)
     {
         if (0 == sinceVersion)
         {
@@ -1042,9 +1044,11 @@ public class CGenerator implements CodeGenerator
         return String.format(
             "    if (codec->acting_version < %1$d)\n" +
             "    {\n" +
-            "        return { NULL, 0 };\n" +
+            "        struct %2$s_string_view ret = { NULL, 0 };\n" +
+            "        return ret;\n" +
             "    }\n\n",
-            sinceVersion);
+            sinceVersion,
+            outermostStruct);
     }
 
     private static CharSequence generateTypeFieldNotPresentCondition(final int sinceVersion)
@@ -1960,6 +1964,8 @@ public class CGenerator implements CodeGenerator
             "    return %2$s;\n" +
             "}\n\n" +
 
+            "#define %13$s_SBE_TEMPLATE_ID %4$s\n\n" +
+
             "SBE_ONE_DEF %3$s %10$s_sbe_template_id(void)\n" +
             "{\n" +
             "    return %4$s;\n" +
@@ -2100,7 +2106,23 @@ public class CGenerator implements CodeGenerator
             semanticType,
             structName,
             messageHeaderStruct,
-            semanticVersion);
+            semanticVersion,
+            toUppercaseWithUnderscores(structName));
+    }
+
+    private String toUppercaseWithUnderscores(final String camelCaseString)
+    {
+        final StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < camelCaseString.length(); i++)
+        {
+            final char theChar = camelCaseString.charAt(i);
+            if (Character.isUpperCase(theChar))
+            {
+                sb.append("_");
+            }
+            sb.append(Character.toUpperCase(theChar));
+        }
+        return sb.toString();
     }
 
     private CharSequence generateFieldFunctions(

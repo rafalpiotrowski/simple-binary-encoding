@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -135,6 +135,10 @@ public:
             });
 
         return result;
+    }
+
+    int schemaId() const {
+        return m_id;
     }
 
 protected:
@@ -285,6 +289,9 @@ private:
         tmpLen = tokenCodec.getReferencedName(tmpBuffer, sizeof(tmpBuffer));
         std::string referencedName(tmpBuffer, tmpLen);
 
+        tmpLen = tokenCodec.getPackageName(tmpBuffer, sizeof(tmpBuffer));
+        std::string packageName(tmpBuffer, tmpLen);
+
         Encoding encoding(
             type,
             presence,
@@ -298,7 +305,7 @@ private:
             timeUnit,
             semanticType);
 
-        Token token(tokenOffset, id, version, tokenSize, componentTokenCount, signal, name, description, encoding);
+        Token token(tokenOffset, id, version, tokenSize, componentTokenCount, signal, name, description, encoding, referencedName, packageName);
 
         tokens->push_back(token);
 

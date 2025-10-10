@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,6 @@
 #include "group_with_data/testMessage3.h"
 #include "group_with_data/testMessage4.h"
 
-int main()
+int main(void)
 {
 }

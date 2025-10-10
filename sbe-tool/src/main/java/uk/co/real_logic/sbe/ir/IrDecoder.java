@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -126,7 +126,16 @@ public class IrDecoder implements AutoCloseable
             i = captureHeader(tokens);
         }
 
-        final ByteOrder byteOrder = !tokens.isEmpty() ? tokens.get(0).encoding().byteOrder() : null;
+        ByteOrder byteOrder = null;
+        for (int j = 0; j < tokens.size(); j++)
+        {
+            if (tokens.get(j).signal() == Signal.ENCODING)
+            {
+                byteOrder = tokens.get(j).encoding().byteOrder();
+                break;
+            }
+        }
+
         final Ir ir = new Ir(
             irPackageName, irNamespaceName, irId, irVersion, null, semanticVersion, byteOrder, irHeader);
 
@@ -231,6 +240,7 @@ public class IrDecoder implements AutoCloseable
             .byteOrder(mapByteOrder(tokenDecoder.byteOrder()))
             .presence(mapPresence(tokenDecoder.presence()));
 
+        tokenBuilder.deprecated(tokenDecoder.deprecated());
         tokenBuilder.name(tokenDecoder.name());
 
         encBuilder.constValue(get(valBuffer, type, tokenDecoder.getConstValue(valArray, 0, valArray.length)));
@@ -255,6 +265,9 @@ public class IrDecoder implements AutoCloseable
 
         final String referencedName = tokenDecoder.referencedName();
         tokenBuilder.referencedName(referencedName.isEmpty() ? null : referencedName);
+
+        final String packageName = tokenDecoder.packageName();
+        tokenBuilder.packageName(packageName.isEmpty() ? null : packageName);
 
         offset += tokenDecoder.encodedLength();
 

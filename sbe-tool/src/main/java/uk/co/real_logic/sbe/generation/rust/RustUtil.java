@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package uk.co.real_logic.sbe.generation.rust;
 
 import org.agrona.Verify;
 import uk.co.real_logic.sbe.PrimitiveType;
+import uk.co.real_logic.sbe.PrimitiveValue;
 import uk.co.real_logic.sbe.generation.Generators;
 import uk.co.real_logic.sbe.generation.rust.RustGenerator.CodecType;
 import uk.co.real_logic.sbe.ir.Encoding;
@@ -65,12 +66,17 @@ public class RustUtil
         return TYPE_NAME_BY_PRIMITIVE_TYPE_MAP.get(primitiveType);
     }
 
+    static String generateRustLiteral(final PrimitiveType type, final PrimitiveValue value)
+    {
+        return generateRustLiteral(type, value.toString());
+    }
+
     static String generateRustLiteral(final PrimitiveType type, final String value)
     {
         Verify.notNull(type, "type");
         Verify.notNull(value, "value");
         final String typeName = rustTypeName(type);
-        if (typeName == null)
+        if (null == typeName)
         {
             throw new IllegalArgumentException("Unknown Rust type name found for primitive " + type.primitiveName());
         }
@@ -178,7 +184,7 @@ public class RustUtil
 
     /**
      * Converts to 'snake_case' but will also handle when there are multiple
-     * upper case characters in a row 'UPPERCase' => 'upper_case'
+     * upper case characters in a row 'UPPERCase' => 'upper_case'.
      *
      * @param value to be formatted
      * @return the string formatted to 'lower_snake_case'
@@ -295,6 +301,7 @@ public class RustUtil
         return indent(appendable, level).append(format(f, args));
     }
 
+    @SuppressWarnings("JavadocVariable")
     enum ReservedKeyword
     {
         Abstract, AlignOf, As, Async, Become, Box, Break, Const, Continue,
