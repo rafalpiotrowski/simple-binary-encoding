@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,22 +67,31 @@ public class CppUtil
      */
     public static String formatPropertyName(final String value)
     {
-        String formattedValue = toLowerFirstChar(value);
+        return formatForCppKeyword(toLowerFirstChar(value));
+    }
 
-        if (ValidationUtil.isCppKeyword(formattedValue))
+    /**
+     * Format a String with a suffix in case it's a keyword.
+     *
+     * @param value to be formatted.
+     * @return the formatted string.
+     */
+    public static String formatForCppKeyword(final String value)
+    {
+        if (ValidationUtil.isCppKeyword(value))
         {
             final String keywordAppendToken = System.getProperty(SbeTool.KEYWORD_APPEND_TOKEN);
             if (null == keywordAppendToken)
             {
                 throw new IllegalStateException(
-                    "Invalid property name='" + formattedValue +
+                    "Invalid property name='" + value +
                     "' please correct the schema or consider setting system property: " + SbeTool.KEYWORD_APPEND_TOKEN);
             }
 
-            formattedValue += keywordAppendToken;
+            return value + keywordAppendToken;
         }
 
-        return formattedValue;
+        return value;
     }
 
     /**
@@ -97,11 +106,11 @@ public class CppUtil
     }
 
     /**
-     * Return the Cpp98 formatted byte order encoding string to use for a given byte order and primitiveType
+     * Return the Cpp98 formatted byte order encoding string to use for a given byte order and primitiveType.
      *
-     * @param byteOrder     of the {@link uk.co.real_logic.sbe.ir.Token}
-     * @param primitiveType of the {@link uk.co.real_logic.sbe.ir.Token}
-     * @return the string formatted as the byte ordering encoding
+     * @param byteOrder     of the {@link uk.co.real_logic.sbe.ir.Token}.
+     * @param primitiveType of the {@link uk.co.real_logic.sbe.ir.Token}.
+     * @return the string formatted as the byte ordering encoding.
      */
     public static String formatByteOrderEncoding(final ByteOrder byteOrder, final PrimitiveType primitiveType)
     {
@@ -136,5 +145,63 @@ public class CppUtil
         }
 
         return sb.toString();
+    }
+
+    static CharSequence generateLiteral(final PrimitiveType type, final String value)
+    {
+        String literal = "";
+
+        switch (type)
+        {
+            case CHAR:
+            case UINT8:
+            case UINT16:
+            case INT8:
+            case INT16:
+                literal = "static_cast<" + cppTypeName(type) + ">(" + value + ")";
+                break;
+
+            case UINT32:
+                literal = "UINT32_C(0x" + Integer.toHexString((int)Long.parseLong(value)) + ")";
+                break;
+
+            case INT32:
+                final long intValue = Long.parseLong(value);
+                if (intValue == Integer.MIN_VALUE)
+                {
+                    literal = "INT32_MIN";
+                }
+                else
+                {
+                    literal = "INT32_C(" + value + ")";
+                }
+                break;
+
+            case FLOAT:
+                literal = value.endsWith("NaN") ? "SBE_FLOAT_NAN" : value + "f";
+                break;
+
+            case INT64:
+                final long longValue = Long.parseLong(value);
+                if (longValue == Long.MIN_VALUE)
+                {
+                    literal = "INT64_MIN";
+                }
+                else
+                {
+                    literal = "INT64_C(" + value + ")";
+                }
+                break;
+
+            case UINT64:
+                literal = "UINT64_C(0x" + Long.toHexString(Long.parseLong(value)) + ")";
+                break;
+
+            case DOUBLE:
+                literal = value.endsWith("NaN") ? "SBE_DOUBLE_NAN" : value;
+                break;
+        }
+
+        return literal;
     }
 }

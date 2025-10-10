@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <sstream>
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "order_check/MultipleVarLength.h"
@@ -51,6 +52,7 @@
 #include "order_check/NoBlock.h"
 #include "order_check/GroupWithNoBlock.h"
 #include "order_check/NestedGroupWithVarLength.h"
+#include "order_check/SkipVersionAddGroupBeforeVarDataV2.h"
 
 using namespace order::check;
 using ::testing::HasSubstr;
@@ -3624,7 +3626,7 @@ TEST_F(FieldAccessOrderCheckTest, allowsEncodingAndDecodingAsciiInsideGroupInSch
         AsciiInsideGroup::sbeSchemaVersion(),
         BUFFER_LEN
     );
-    char aOut[6];
+    char aOut[7] = {'\0'};
     decoder.getA(aOut, 6);
     EXPECT_STREQ(aOut, "GBPUSD");
     AsciiInsideGroup::B &b = decoder.b();
@@ -4935,3 +4937,154 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(2, 2, "V0_B_N_D_N_BLOCK")
     )
 );
+
+TEST_F(FieldAccessOrderCheckTest, allowsSkippingFutureGroupWhenDecodingFromVersionWithNoChangesInMessagePart1)
+{
+    AddGroupBeforeVarDataV0 encoder;
+    encoder.wrapForEncode(m_buffer, OFFSET, BUFFER_LEN);
+    encoder.a(42).putB("abc");
+
+    SkipVersionAddGroupBeforeVarDataV2 decoder;
+    decoder.wrapForDecode(
+        m_buffer,
+        OFFSET,
+        AddGroupBeforeVarDataV0::sbeBlockLength(),
+        1,
+        BUFFER_LEN
+    );
+
+    EXPECT_EQ(decoder.a(), 42);
+    EXPECT_EQ(decoder.getBAsString(), "abc");
+}
+
+TEST_F(FieldAccessOrderCheckTest, worksWithWrappingConstructors1)
+{
+    MultipleVarLength encoder(m_buffer, BUFFER_LEN);
+    encoder.a(42);
+    encoder.putB("abc");
+    encoder.putC("def");
+    encoder.checkEncodingIsComplete();
+
+    MultipleVarLength decoder(m_buffer, BUFFER_LEN);
+    EXPECT_EQ(decoder.a(), 42);
+    EXPECT_EQ(decoder.getBAsString(), "abc");
+    EXPECT_EQ(decoder.getCAsString(), "def");
+}
+
+TEST_F(FieldAccessOrderCheckTest, worksWithWrappingConstructors2)
+{
+    MultipleVarLength encoder(
+        m_buffer,
+        BUFFER_LEN,
+        MultipleVarLength::sbeBlockLength(),
+        MultipleVarLength::sbeSchemaVersion()
+    );
+    encoder.a(42);
+    encoder.putB("abc");
+    encoder.putC("def");
+    encoder.checkEncodingIsComplete();
+
+    MultipleVarLength decoder(
+        m_buffer,
+        BUFFER_LEN,
+        MultipleVarLength::sbeBlockLength(),
+        MultipleVarLength::sbeSchemaVersion()
+    );
+    EXPECT_EQ(decoder.a(), 42);
+    EXPECT_EQ(decoder.getBAsString(), "abc");
+    EXPECT_EQ(decoder.getCAsString(), "def");
+}
+
+TEST_F(FieldAccessOrderCheckTest, worksWithWrappingConstructors3)
+{
+    MultipleVarLength encoder(
+        m_buffer,
+        OFFSET,
+        BUFFER_LEN,
+        MultipleVarLength::sbeBlockLength(),
+        MultipleVarLength::sbeSchemaVersion()
+    );
+    encoder.a(42);
+    encoder.putB("abc");
+    encoder.putC("def");
+    encoder.checkEncodingIsComplete();
+
+    MultipleVarLength decoder(
+        m_buffer,
+        OFFSET,
+        BUFFER_LEN,
+        MultipleVarLength::sbeBlockLength(),
+        MultipleVarLength::sbeSchemaVersion()
+    );
+    EXPECT_EQ(decoder.a(), 42);
+    EXPECT_EQ(decoder.getBAsString(), "abc");
+    EXPECT_EQ(decoder.getCAsString(), "def");
+}
+
+TEST_F(FieldAccessOrderCheckTest, worksWithInsertionOperator)
+{
+    MultipleVarLength encoder(
+        m_buffer,
+        OFFSET,
+        BUFFER_LEN,
+        MultipleVarLength::sbeBlockLength(),
+        MultipleVarLength::sbeSchemaVersion()
+    );
+    encoder.a(42);
+    encoder.putB("abc");
+    encoder.putC("def");
+    encoder.checkEncodingIsComplete();
+
+    MultipleVarLength decoder(
+        m_buffer,
+        BUFFER_LEN
+    );
+    std::stringstream stream;
+    stream << decoder;
+
+    const std::string expected = "\"a\": 42, \"b\": \"abc\", \"c\": \"def\"";
+    EXPECT_THAT(stream.str(), HasSubstr(expected));
+    EXPECT_EQ(decoder.a(), 42);
+    EXPECT_EQ(decoder.getBAsString(), "abc");
+    EXPECT_EQ(decoder.getCAsString(), "def");
+}
+
+TEST_F(FieldAccessOrderCheckTest, shouldThrowExceptionWhenNotWrapped)
+{
+    MultipleVarLength encoder;
+    encoder.wrapForEncode(m_buffer, OFFSET, BUFFER_LEN);
+    encoder.a(42);
+    encoder.putB("abc");
+    encoder.putC("def");
+    encoder.checkEncodingIsComplete();
+
+    MultipleVarLength decoder;
+
+    EXPECT_THROW(
+        {
+            try
+            {
+                decoder.decodeLength();
+            }
+            catch (const std::exception &e)
+            {
+                EXPECT_THAT(
+                    e.what(),
+                    HasSubstr("Illegal access. Cannot call \"decodeLength()\" in state: NOT_WRAPPED")
+                );
+                throw;
+            }
+        },
+        std::logic_error
+    );
+
+    decoder.wrapForDecode(
+        m_buffer,
+        OFFSET,
+        MultipleVarLength::sbeBlockLength(),
+        MultipleVarLength::sbeSchemaVersion(),
+        BUFFER_LEN
+    );
+
+    decoder.decodeLength();
+}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  * Copyright (C) 2017 MarketFactory, Inc
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -63,6 +63,8 @@ public class CSharpGenerator implements CodeGenerator
     private final OutputManager outputManager;
     private final PrecedenceChecks precedenceChecks;
     private final String precedenceChecksFlagName;
+    private final boolean shouldSupportTypesPackageNames;
+    private final Set<String> packageNameByTypes = new HashSet<>();
 
     /**
      * Create a new C# language {@link CodeGenerator}.
@@ -75,6 +77,7 @@ public class CSharpGenerator implements CodeGenerator
         this(
             ir,
             PrecedenceChecks.newInstance(new PrecedenceChecks.Context()),
+            false,
             outputManager
         );
     }
@@ -82,13 +85,15 @@ public class CSharpGenerator implements CodeGenerator
     /**
      * Create a new C# language {@link CodeGenerator}.
      *
-     * @param ir               for the messages and types.
-     * @param precedenceChecks whether and how to perform field precedence checks.
-     * @param outputManager    for generating the codecs to.
+     * @param ir                             for the messages and types.
+     * @param precedenceChecks               whether and how to perform field precedence checks.
+     * @param shouldSupportTypesPackageNames generator support for types in their own package.
+     * @param outputManager                  for generating the codecs to.
      */
     public CSharpGenerator(
         final Ir ir,
         final PrecedenceChecks precedenceChecks,
+        final boolean shouldSupportTypesPackageNames,
         final OutputManager outputManager)
     {
         Verify.notNull(ir, "ir");
@@ -97,6 +102,7 @@ public class CSharpGenerator implements CodeGenerator
         this.ir = ir;
         this.precedenceChecks = precedenceChecks;
         this.precedenceChecksFlagName = precedenceChecks.context().precedenceChecksFlagName();
+        this.shouldSupportTypesPackageNames = shouldSupportTypesPackageNames;
         this.outputManager = outputManager;
     }
 
@@ -141,11 +147,42 @@ public class CSharpGenerator implements CodeGenerator
         }
     }
 
+    private String fetchTypesPackageName(final Token token, final Ir ir)
+    {
+        if (!shouldSupportTypesPackageNames)
+        {
+            return ir.applicableNamespace();
+        }
+
+        if (token.packageName() != null)
+        {
+            return token.packageName();
+        }
+
+        return ir.applicableNamespace();
+    }
+
     /**
      * {@inheritDoc}
      */
     public void generate() throws IOException
     {
+        packageNameByTypes.clear();
+
+        if (shouldSupportTypesPackageNames)
+        {
+            for (final List<Token> tokens : ir.types())
+            {
+                final Token token = tokens.get(0);
+                final String packageName = token.packageName();
+
+                if (packageName != null)
+                {
+                    packageNameByTypes.add(packageName);
+                }
+            }
+        }
+
         generateMessageHeaderStub();
         generateTypeStubs();
 
@@ -167,7 +204,7 @@ public class CSharpGenerator implements CodeGenerator
                 final List<Token> varData = new ArrayList<>();
                 collectVarData(messageBody, offset, varData);
 
-                out.append(generateFileHeader(ir.applicableNamespace()));
+                out.append(generateFileHeader(fetchTypesPackageName(msgToken, ir), packageNameByTypes));
                 out.append(generateDocumentation(BASE_INDENT, msgToken));
                 out.append(generateClassDeclaration(className));
                 out.append(generateMessageFlyweightCode(className, msgToken, fieldPrecedenceModel, BASE_INDENT));
@@ -184,7 +221,7 @@ public class CSharpGenerator implements CodeGenerator
                 out.append(generateVarData(fieldPrecedenceModel, varData, BASE_INDENT + INDENT));
 
                 out.append(generateDisplay(toUpperFirstChar(msgToken.name()),
-                    fields, groups, varData, fieldPrecedenceModel));
+                    className, fields, groups, varData, fieldPrecedenceModel));
 
                 out.append(INDENT + "}\n");
                 out.append("}\n");
@@ -669,7 +706,7 @@ public class CSharpGenerator implements CodeGenerator
 
         try (Writer out = outputManager.createOutput(enumName))
         {
-            out.append(generateFileHeader(ir.applicableNamespace()));
+            out.append(generateFileHeader(fetchTypesPackageName(enumToken, ir), packageNameByTypes));
             out.append(generateDocumentation(INDENT, enumToken));
             final String enumPrimitiveType = cSharpTypeName(enumToken.encoding().primitiveType());
             out.append(generateEnumDeclaration(enumName, enumPrimitiveType, true));
@@ -689,7 +726,7 @@ public class CSharpGenerator implements CodeGenerator
 
         try (Writer out = outputManager.createOutput(enumName))
         {
-            out.append(generateFileHeader(ir.applicableNamespace()));
+            out.append(generateFileHeader(fetchTypesPackageName(enumToken, ir), packageNameByTypes));
             out.append(generateDocumentation(INDENT, enumToken));
             final String enumPrimitiveType = cSharpTypeName(enumToken.encoding().primitiveType());
             out.append(generateEnumDeclaration(enumName, enumPrimitiveType, false));
@@ -703,14 +740,15 @@ public class CSharpGenerator implements CodeGenerator
 
     private void generateComposite(final List<Token> tokens) throws IOException
     {
-        final String compositeName = CSharpUtil.formatClassName(tokens.get(0).applicableTypeName());
+        final Token token = tokens.get(0);
+        final String compositeName = CSharpUtil.formatClassName(token.applicableTypeName());
 
         try (Writer out = outputManager.createOutput(compositeName))
         {
-            out.append(generateFileHeader(ir.applicableNamespace()));
-            out.append(generateDocumentation(INDENT, tokens.get(0)));
+            out.append(generateFileHeader(fetchTypesPackageName(token, ir), packageNameByTypes));
+            out.append(generateDocumentation(INDENT, token));
             out.append(generateClassDeclaration(compositeName));
-            out.append(generateFixedFlyweightCode(tokens.get(0).encodedLength()));
+            out.append(generateFixedFlyweightCode(token.encodedLength()));
             out.append(generateCompositePropertyElements(tokens.subList(1, tokens.size() - 1), BASE_INDENT));
 
             out.append(generateCompositeDisplay(tokens));
@@ -782,7 +820,7 @@ public class CSharpGenerator implements CodeGenerator
         for (final Token token : tokens)
         {
             sb.append(generateDocumentation(INDENT + INDENT, token))
-              .append(INDENT).append(INDENT).append(token.name()).append(" = ")
+              .append(INDENT).append(INDENT).append(formatForCSharpKeyword(token.name())).append(" = ")
               .append(token.encoding().constValue()).append(",\n");
         }
 
@@ -791,40 +829,6 @@ public class CSharpGenerator implements CodeGenerator
         sb.append(INDENT).append(INDENT).append("NULL_VALUE = ").append(nullVal).append("\n");
 
         return sb;
-    }
-
-    private CharSequence generateFileHeader(final String packageName)
-    {
-        String[] tokens = packageName.split("\\.");
-        final StringBuilder sb = new StringBuilder();
-        for (final String t : tokens)
-        {
-            sb.append(toUpperFirstChar(t)).append(".");
-        }
-        if (sb.length() > 0)
-        {
-            sb.setLength(sb.length() - 1);
-        }
-
-        tokens = sb.toString().split("-");
-        sb.setLength(0);
-
-        for (final String t : tokens)
-        {
-            sb.append(toUpperFirstChar(t));
-        }
-
-        return String.format(
-            "// <auto-generated>\n" +
-            "//     Generated SBE (Simple Binary Encoding) message codec\n" +
-            "// </auto-generated>\n\n" +
-            "#pragma warning disable 1591 // disable warning on missing comments\n" +
-            "using System;\n" +
-            "using System.Text;\n" +
-            "using Org.SbeTool.Sbe.Dll;\n\n" +
-            "namespace %s\n" +
-            "{\n",
-            sb);
     }
 
     private CharSequence generateClassDeclaration(final String className)
@@ -840,25 +844,11 @@ public class CSharpGenerator implements CodeGenerator
             className);
     }
 
-    private static String generateDocumentation(final String indent, final Token token)
-    {
-        final String description = token.description();
-        if (null == description || description.isEmpty())
-        {
-            return "";
-        }
-
-        return
-            indent + "/// <summary>\n" +
-            indent + "/// " + description + "\n" +
-            indent + "/// </summary>\n";
-    }
-
     private void generateMetaAttributeEnum() throws IOException
     {
         try (Writer out = outputManager.createOutput(META_ATTRIBUTE_ENUM))
         {
-            out.append(generateFileHeader(ir.applicableNamespace()));
+            out.append(generateFileHeader(ir.applicableNamespace(), null));
 
             out.append(
                 INDENT + "public enum MetaAttribute\n" +
@@ -1163,7 +1153,7 @@ public class CSharpGenerator implements CodeGenerator
             generateDocumentation(indent, fieldToken),
             typeName, propName, offset,
             generateArrayFieldNotPresentCondition(fieldToken.version(),
-            indent + INDENT + INDENT, "new " + typeName + "[0]"),
+            indent + INDENT + INDENT, "System.Array.Empty<" + typeName + ">()"),
             accessOrderListenerCallDoubleIndent));
 
         sb.append(String.format("\n" +
@@ -1177,7 +1167,7 @@ public class CSharpGenerator implements CodeGenerator
             generateDocumentation(indent, fieldToken),
             typeName, propName, offset,
             generateArrayFieldNotPresentCondition(fieldToken.version(),
-            indent + INDENT + INDENT, "new " + typeName + "[0]"),
+            indent + INDENT + INDENT, "System.Array.Empty<" + typeName + ">()"),
             accessOrderListenerCall));
 
         if (typeToken.encoding().primitiveType() == PrimitiveType.CHAR)
@@ -1294,7 +1284,7 @@ public class CSharpGenerator implements CodeGenerator
 
         final StringBuilder sb = new StringBuilder();
 
-        final String javaTypeName = cSharpTypeName(token.encoding().primitiveType());
+        final String csharpTypeName = cSharpTypeName(token.encoding().primitiveType());
         final byte[] constantValue = token.encoding().constValue().byteArrayValue(token.encoding().primitiveType());
         final CharSequence values = generateByteLiteralList(
             token.encoding().constValue().byteArrayValue(token.encoding().primitiveType()));
@@ -1316,7 +1306,7 @@ public class CSharpGenerator implements CodeGenerator
             indent + INDENT + "{\n" +
             indent + INDENT + INDENT + "return _%3$sValue[index];\n" +
             indent + INDENT + "}\n\n",
-            javaTypeName,
+            csharpTypeName,
             toUpperFirstChar(propertyName),
             propertyName));
 
@@ -1924,22 +1914,20 @@ public class CSharpGenerator implements CodeGenerator
         }
 
         final StringBuilder sb = new StringBuilder();
+
         sb.append(indent).append("private void OnWrapForDecode(int actingVersion)\n")
-            .append(indent).append("{\n")
-            .append(indent).append(INDENT).append("switch(actingVersion)\n")
-            .append(indent).append(INDENT).append("{\n");
+            .append(indent).append("{\n");
 
-        fieldPrecedenceModel.forEachWrappedStateByVersion((version, state) ->
-            sb.append(indent).append(TWO_INDENT).append("case ").append(version).append(":\n")
-            .append(indent).append(THREE_INDENT).append("codecState(")
+        fieldPrecedenceModel.forEachWrappedStateByVersionDesc((version, state) ->
+            sb.append(indent).append("    if (actingVersion >= ").append(version).append(")\n")
+            .append(indent).append("    {\n")
+            .append(indent).append("        codecState(")
             .append(qualifiedStateCase(state)).append(");\n")
-            .append(indent).append(THREE_INDENT).append("break;\n"));
+            .append(indent).append("        return;\n")
+            .append(indent).append("    }\n\n"));
 
-        sb.append(indent).append(TWO_INDENT).append("default:\n")
-            .append(indent).append(THREE_INDENT).append("codecState(")
-            .append(qualifiedStateCase(fieldPrecedenceModel.latestVersionWrappedState())).append(");\n")
-            .append(indent).append(THREE_INDENT).append("break;\n")
-            .append(indent).append(INDENT).append("}\n")
+        sb.append(indent)
+            .append("    throw new InvalidOperationException(\"Unsupported acting version: \" + actingVersion);\n")
             .append(indent).append("}\n\n");
 
         return sb;
@@ -2261,63 +2249,6 @@ public class CSharpGenerator implements CodeGenerator
         return "LittleEndian";
     }
 
-    private String generateLiteral(final PrimitiveType type, final String value)
-    {
-        String literal = "";
-
-        final String castType = cSharpTypeName(type);
-        switch (type)
-        {
-            case CHAR:
-            case UINT8:
-            case INT8:
-            case INT16:
-            case UINT16:
-                literal = "(" + castType + ")" + value;
-                break;
-
-            case INT32:
-                literal = value;
-                break;
-
-            case UINT32:
-                literal = value + "U";
-                break;
-
-            case FLOAT:
-                if (value.endsWith("NaN"))
-                {
-                    literal = "float.NaN";
-                }
-                else
-                {
-                    literal = value + "f";
-                }
-                break;
-
-            case UINT64:
-                literal = "0x" + Long.toHexString(Long.parseLong(value)) + "UL";
-                break;
-
-            case INT64:
-                literal = value + "L";
-                break;
-
-            case DOUBLE:
-                if (value.endsWith("NaN"))
-                {
-                    literal = "double.NaN";
-                }
-                else
-                {
-                    literal = value + "d";
-                }
-                break;
-        }
-
-        return literal;
-    }
-
     private void appendGroupInstanceDisplay(
         final StringBuilder sb,
         final List<Token> fields,
@@ -2536,6 +2467,19 @@ public class CSharpGenerator implements CodeGenerator
         append(sb, indent, "}");
     }
 
+    private void appendMessageToString(final StringBuilder sb, final String indent, final String className)
+    {
+        sb.append('\n');
+        append(sb, indent, "public override string ToString()");
+        append(sb, indent, "{");
+        append(sb, indent, "    var sb = new StringBuilder(100);");
+        append(sb, indent, "    var m = new " + className + "();");
+        append(sb, indent, "    m.WrapForDecode(_buffer, _offset, _actingBlockLength, _actingVersion);");
+        append(sb, indent, "    m.BuildString(sb);");
+        append(sb, indent, "    return sb.ToString();");
+        append(sb, indent, "}");
+    }
+
     private CharSequence generateChoiceDisplay(final String enumName)
     {
         final StringBuilder sb = new StringBuilder();
@@ -2556,6 +2500,7 @@ public class CSharpGenerator implements CodeGenerator
 
     private CharSequence generateDisplay(
         final String name,
+        final String className,
         final List<Token> tokens,
         final List<Token> groups,
         final List<Token> varData,
@@ -2563,7 +2508,7 @@ public class CSharpGenerator implements CodeGenerator
     {
         final StringBuilder sb = new StringBuilder(100);
 
-        appendToString(sb, TWO_INDENT);
+        appendMessageToString(sb, TWO_INDENT, className);
         sb.append('\n');
         append(sb, TWO_INDENT, "internal void BuildString(StringBuilder builder)");
         append(sb, TWO_INDENT, "{");

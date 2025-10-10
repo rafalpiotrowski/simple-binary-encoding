@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ import static uk.co.real_logic.sbe.xml.XmlSchemaParser.parse;
 
 class EncodedIrTest
 {
-    private static final int CAPACITY = 1024 * 16;
+    private static final int CAPACITY = 1024 * 32;
 
     @Test
     void shouldEncodeIr() throws Exception
@@ -166,7 +166,18 @@ class EncodedIrTest
     @Test
     void shouldDecodeMessagesAndTypes() throws Exception
     {
-        try (InputStream in = Tests.getLocalResource("code-generation-schema.xml"))
+        testDecodeTypes("code-generation-schema.xml");
+    }
+
+    @Test
+    void shouldPreservePackageNames() throws Exception
+    {
+        testDecodeTypes("explicit-package-test-schema.xml");
+    }
+
+    private void testDecodeTypes(final String name1) throws Exception
+    {
+        try (InputStream in = Tests.getLocalResource(name1))
         {
             final MessageSchema schema = parse(in, ParserOptions.DEFAULT);
             final IrGenerator irg = new IrGenerator();
@@ -216,6 +227,7 @@ class EncodedIrTest
     private void assertEqual(final Token lhs, final Token rhs)
     {
         assertThat(lhs.name(), is(rhs.name()));
+        assertThat(lhs.packageName(), is(rhs.packageName()));
         assertThat(lhs.version(), is(rhs.version()));
         assertThat(lhs.offset(), is(rhs.offset()));
         assertThat((long)lhs.id(), is((long)rhs.id()));

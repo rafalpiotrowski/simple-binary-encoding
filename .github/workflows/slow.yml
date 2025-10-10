@@ -1,0 +1,86 @@
+name: Slow checks
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 12 * * *'
+  push:
+    branches:
+      - master
+      - 'release/**'
+  pull_request:
+    types: [opened, synchronize]
+    branches:
+      - master
+      - 'release/**'
+
+concurrency:
+  group: slow-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+env:
+  GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.java.installations.auto-detect=false -Dorg.gradle.warning.mode=fail'
+  JAVA_VERSION: '17'
+
+permissions:
+  contents: read
+
+jobs:
+  property-tests:
+    name: Property tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      matrix:
+        java: [ '25' ]
+        dotnet: [ '10' ]
+    env:
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - name: Setup java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: ${{ matrix.java }}
+      - name: Setup BUILD_JAVA_HOME & BUILD_JAVA_VERSION
+        run: |
+          java -Xinternalversion
+          echo "BUILD_JAVA_HOME=${JAVA_HOME}" >> $GITHUB_ENV
+          echo "BUILD_JAVA_VERSION=${{ matrix.java }}" >> $GITHUB_ENV
+      - name: Setup java to run Gradle script
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ matrix.dotnet }}
+      - name: Build .NET library
+        run: ./csharp/build.sh
+      - name: Run property tests
+        run: ./gradlew propertyTest
+      - name: Copy test logs
+        id: copy_test_logs
+        if: failure()
+        run: |
+          ${{ runner.os == 'Windows' && 'echo "file=build/distributions/test_logs.tbz2" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append' || 'echo "file=build/distributions/test_logs.tbz2" >> $GITHUB_OUTPUT' }}
+          ./gradlew tarTestLogs
+      - name: Upload crash logs
+        if: always() && steps.copy_test_logs.outputs.file == 'build/distributions/test_logs.tbz2'
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-logs-${{ matrix.os }}-property-tests-java-${{matrix.java}}-dotnet-${{matrix.dotnet}}
+          path: ${{ steps.copy_test_logs.outputs.file }}
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: property-tests
+          path: sbe-tool/build/reports/tests/propertyTest

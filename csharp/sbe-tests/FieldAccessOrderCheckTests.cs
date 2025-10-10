@@ -3159,6 +3159,25 @@ namespace Org.SbeTool.Sbe.Tests
             var exception = Assert.ThrowsException<InvalidOperationException>(encoder.CheckEncodingIsComplete);
             StringAssert.Contains(exception.Message, $"Not fully encoded, current state: {expectedState}");
         }
+        
+        [TestMethod]
+        public void AllowsSkippingFutureGroupWhenDecodingFromVersionWithNoChangesInMessage()
+        {
+            var encoder = new AddGroupBeforeVarDataV0()
+                .WrapForEncodeAndApplyHeader(_buffer, Offset, _messageHeader);
+
+            _messageHeader.TemplateId = SkipVersionAddGroupBeforeVarDataV2.TemplateId;
+            _messageHeader.Version = 1;
+
+            encoder.A = 42;
+            encoder.SetB("abc");
+
+            var decoder = new SkipVersionAddGroupBeforeVarDataV2()
+                .WrapForDecodeAndApplyHeader(_buffer, Offset, _messageHeader);
+
+            Assert.AreEqual(42, decoder.A);
+            Assert.AreEqual(decoder.GetB(), "abc");
+        }
 
         private void ModifyHeaderToLookLikeVersion0()
         {
@@ -3175,7 +3194,7 @@ namespace Org.SbeTool.Sbe.Tests
         {
             var messageHeaderDecoder = new MessageHeader();
             messageHeaderDecoder.Wrap(_buffer, Offset, MessageHeader.SbeSchemaVersion);
-            Debug.Assert(messageHeaderDecoder.Version == 1);
+            Debug.Assert(messageHeaderDecoder.Version >= 1);
             int v0TemplateId = messageHeaderDecoder.TemplateId - 1_000;
             var messageHeaderEncoder = new MessageHeader();
             messageHeaderEncoder.Wrap(_buffer, Offset, MessageHeader.SbeSchemaVersion);

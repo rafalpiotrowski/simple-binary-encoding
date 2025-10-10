@@ -8,7 +8,7 @@ When submitting code, please make every effort to follow existing conventions an
 
 By contributing your code, you agree to license your contribution under the terms of the APLv2:
  
-https://github.com/real-logic/simple-binary-encoding/blob/master/LICENSE
+https://github.com/aeron-io/simple-binary-encoding/blob/master/LICENSE
 
 All files are made available under the Apache 2.0 license.
 
@@ -16,7 +16,7 @@ If you are adding a new file it should have the following header:
 
 ```
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ public final class FieldPrecedenceModel
         new CodecInteraction.CodecInteractionFactory(groupPathsByField, topLevelBlockFields);
     private final Map<CodecInteraction, List<TransitionGroup>> transitionsByInteraction = new LinkedHashMap<>();
     private final Map<State, List<TransitionGroup>> transitionsByState = new HashMap<>();
-    private final Int2ObjectHashMap<State> versionWrappedStates = new Int2ObjectHashMap<>();
+    private final TreeMap<Integer, State> versionWrappedStates = new TreeMap<>();
     private final State notWrappedState = allocateState("NOT_WRAPPED");
     private final String generatedRepresentationClassName;
     private State encoderWrappedState;
@@ -103,13 +103,11 @@ public final class FieldPrecedenceModel
      * Iterates over the states after a codec is wrapped over a particular version of data.
      * @param consumer the consumer of the states.
      */
-    public void forEachWrappedStateByVersion(final IntObjConsumer<State> consumer)
+    public void forEachWrappedStateByVersionDesc(final IntObjConsumer<State> consumer)
     {
-        final Int2ObjectHashMap<State>.EntryIterator iterator = versionWrappedStates.entrySet().iterator();
-        while (iterator.hasNext())
+        for (final Map.Entry<Integer, State> entry : versionWrappedStates.descendingMap().entrySet())
         {
-            iterator.next();
-            consumer.accept(iterator.getIntKey(), iterator.getValue());
+            consumer.accept(entry.getKey(), entry.getValue());
         }
     }
 
@@ -138,7 +136,7 @@ public final class FieldPrecedenceModel
     public void forEachStateOrderedByStateNumber(final Consumer<State> consumer)
     {
         transitionsByState.keySet().stream()
-            .sorted(Comparator.comparingInt(s -> s.number))
+            .sorted(Comparator.comparingInt((s) -> s.number))
             .forEach(consumer);
     }
 
@@ -210,27 +208,31 @@ public final class FieldPrecedenceModel
     public void generateGraph(final StringBuilder sb, final String indent)
     {
         sb.append(indent).append("digraph G {\n");
-        transitionsByInteraction.values().forEach(transitionsForContext ->
-        {
-            transitionsForContext.forEach(transition ->
+        transitionsByInteraction.values().forEach(
+            (transitionsForContext) ->
             {
-                transition.forEachStartState(startState ->
-                {
-                    sb.append(indent).append("    ")
-                        .append(startState.name)
-                        .append(" -> ")
-                        .append(transition.endState().name)
-                        .append(" [label=\"  ").append(transition.interaction.exampleCode());
-
-                    if (!transition.interaction.exampleConditions().isEmpty())
+                transitionsForContext.forEach(
+                    (transition) ->
                     {
-                        sb.append("\\n").append("  where ").append(transition.interaction.exampleConditions());
-                    }
+                        transition.forEachStartState(
+                            (startState) ->
+                            {
+                                sb.append(indent).append("    ")
+                                    .append(startState.name)
+                                    .append(" -> ")
+                                    .append(transition.endState().name)
+                                    .append(" [label=\"  ").append(transition.interaction.exampleCode());
 
-                    sb.append("  \"];\n");
-                });
+                                if (!transition.interaction.exampleConditions().isEmpty())
+                                {
+                                    sb.append("\\n").append("  where ")
+                                        .append(transition.interaction.exampleConditions());
+                                }
+
+                                sb.append("  \"];\n");
+                            });
+                    });
             });
-        });
         sb.append(indent).append("}\n");
     }
 
@@ -246,34 +248,33 @@ public final class FieldPrecedenceModel
         walkSchemaLevel(new VersionCollector(versions), fields, groups, varData);
         walkSchemaLevel(new PathCollector(topLevelBlockFields, groupPathsByField), fields, groups, varData);
 
-        final IntStream selectedVersions = versionsSelector.apply(versions.stream().mapToInt(i -> i));
-        selectedVersions.sorted().forEach(version ->
-        {
-            final State versionWrappedState = allocateState("V" + version + "_BLOCK");
+        final IntStream selectedVersions = versionsSelector.apply(versions.stream().mapToInt((i) -> i));
+        selectedVersions.sorted().forEach(
+            (version) ->
+            {
+                final State versionWrappedState = allocateState("V" + version + "_BLOCK");
 
-            versionWrappedStates.put(version, versionWrappedState);
+                versionWrappedStates.put(version, versionWrappedState);
 
-            final CodecInteraction wrapInteraction = interactionFactory.wrap(version);
+                final CodecInteraction wrapInteraction = interactionFactory.wrap(version);
 
-            allocateTransitions(
-                wrapInteraction,
-                Collections.singletonList(notWrappedState),
-                versionWrappedState
-            );
+                allocateTransitions(
+                    wrapInteraction,
+                    Collections.singletonList(notWrappedState),
+                    versionWrappedState);
 
-            final TransitionCollector transitionCollector = new TransitionCollector(
-                "V" + version + "_",
-                Collections.singleton(versionWrappedState),
-                versionWrappedState,
-                token -> token.version() <= version
-            );
+                final TransitionCollector transitionCollector = new TransitionCollector(
+                    "V" + version + "_",
+                    Collections.singleton(versionWrappedState),
+                    versionWrappedState,
+                    (token) -> token.version() <= version);
 
-            walkSchemaLevel(transitionCollector, fields, groups, varData);
+                walkSchemaLevel(transitionCollector, fields, groups, varData);
 
-            // Last writer (highest version) wins when there are multiple versions
-            encoderWrappedState = versionWrappedState;
-            terminalEncoderStates = transitionCollector.exitStates();
-        });
+                // Last writer (highest version) wins when there are multiple versions
+                encoderWrappedState = versionWrappedState;
+                terminalEncoderStates = transitionCollector.exitStates();
+            });
     }
 
     private State allocateState(final String name)
@@ -289,11 +290,11 @@ public final class FieldPrecedenceModel
         final State to)
     {
         final TransitionGroup transitionGroup = new TransitionGroup(interaction, from, to);
-        final List<TransitionGroup> transitionsForInteraction =
-            transitionsByInteraction.computeIfAbsent(interaction, ignored -> new ArrayList<>());
+        final List<TransitionGroup> transitionsForInteraction = transitionsByInteraction.computeIfAbsent(
+            interaction, (ignored) -> new ArrayList<>());
 
         final boolean duplicateEndState =
-            transitionsForInteraction.stream().anyMatch(t -> t.to.number == transitionGroup.to.number);
+            transitionsForInteraction.stream().anyMatch((t) -> t.to.number == transitionGroup.to.number);
 
         if (duplicateEndState)
         {
@@ -301,7 +302,7 @@ public final class FieldPrecedenceModel
         }
 
         final Optional<TransitionGroup> conflictingTransition = transitionsForInteraction.stream()
-            .filter(t -> t.from.stream().anyMatch(transitionGroup.from::contains))
+            .filter((t) -> t.from.stream().anyMatch(transitionGroup.from::contains))
             .findAny();
 
         if (conflictingTransition.isPresent())
@@ -312,7 +313,7 @@ public final class FieldPrecedenceModel
 
         transitionsForInteraction.add(transitionGroup);
 
-        from.forEach(fromState -> transitionsByState.get(fromState).add(transitionGroup));
+        from.forEach((fromState) -> transitionsByState.get(fromState).add(transitionGroup));
     }
 
     private static void walkSchemaLevel(
@@ -396,7 +397,6 @@ public final class FieldPrecedenceModel
             groupPathsByField.put(token, currentGroupPath());
         }
 
-        @Override
         public void onEnterRepeatingGroup(
             final Token token,
             final List<Token> groupFields,
@@ -409,7 +409,6 @@ public final class FieldPrecedenceModel
             groupPath.removeLast();
         }
 
-        @Override
         public void onVarData(final Token token)
         {
             groupPathsByField.put(token, currentGroupPath());
@@ -418,15 +417,15 @@ public final class FieldPrecedenceModel
         private String currentGroupPath()
         {
             final StringBuilder sb = new StringBuilder();
-            groupPath.forEach(token ->
-            {
-                sb.append(token.name()).append('.');
-            });
+            groupPath.forEach(
+                (token) ->
+                {
+                    sb.append(token.name()).append('.');
+                });
             return sb.toString();
         }
     }
 
-    @SuppressWarnings("ClassCanBeRecord")
     private static final class VersionCollector implements SchemaConsumer
     {
         private final IntHashSet versions;
@@ -436,13 +435,11 @@ public final class FieldPrecedenceModel
             this.versions = versions;
         }
 
-        @Override
         public void onBlockField(final Token token)
         {
             versions.add(token.version());
         }
 
-        @Override
         public void onEnterRepeatingGroup(
             final Token token,
             final List<Token> groupFields,
@@ -453,7 +450,6 @@ public final class FieldPrecedenceModel
             walkSchemaLevel(this, groupFields, groupGroups, groupVarData);
         }
 
-        @Override
         public void onVarData(final Token token)
         {
             versions.add(token.version());
@@ -481,7 +477,6 @@ public final class FieldPrecedenceModel
             currentStates.add(blockState);
         }
 
-        @Override
         public void onBlockField(final Token token)
         {
             if (filter.test(token))
@@ -491,7 +486,6 @@ public final class FieldPrecedenceModel
             }
         }
 
-        @Override
         public void onEnterRepeatingGroup(
             final Token token,
             final List<Token> groupFields,
@@ -523,8 +517,7 @@ public final class FieldPrecedenceModel
                     groupPrefix + "N_",
                     currentStates,
                     nRemainingGroupElement,
-                    filter
-                );
+                    filter);
                 walkSchemaLevel(nRemainingCollector, groupFields, groupGroups, groupVarData);
 
                 currentStates.clear();
@@ -550,8 +543,7 @@ public final class FieldPrecedenceModel
                     groupPrefix + "1_",
                     currentStates,
                     oneRemainingGroupElement,
-                    filter
-                );
+                    filter);
                 walkSchemaLevel(oneRemainingCollector, groupFields, groupGroups, groupVarData);
 
                 final CodecInteraction resetCountToIndexInteraction = interactionFactory.resetCountToIndex(token);
@@ -568,16 +560,13 @@ public final class FieldPrecedenceModel
             }
         }
 
-        @Override
         public void onVarData(final Token token)
         {
             if (filter.test(token))
             {
                 final CodecInteraction lengthAccessInteraction = interactionFactory.accessVarDataLength(token);
-                currentStates.forEach(state ->
-                {
-                    allocateTransitions(lengthAccessInteraction, Collections.singleton(state), state);
-                });
+                currentStates.forEach(
+                    (state) -> allocateTransitions(lengthAccessInteraction, Collections.singleton(state), state));
 
                 final CodecInteraction codecInteraction = interactionFactory.accessField(token);
                 final State accessedState = allocateState(statePrefix + token.name().toUpperCase() + "_DONE");
@@ -626,7 +615,9 @@ public final class FieldPrecedenceModel
             return name;
         }
 
-        @Override
+        /**
+         * {@inheritDoc}
+         */
         public String toString()
         {
             return "State{" +
@@ -692,7 +683,9 @@ public final class FieldPrecedenceModel
             return interaction.exampleCode();
         }
 
-        @Override
+        /**
+         * {@inheritDoc}
+         */
         public String toString()
         {
             return "Transition{" +
@@ -726,7 +719,6 @@ public final class FieldPrecedenceModel
         {
             if (this instanceof AccessField)
             {
-                //noinspection PatternVariableCanBeUsed
                 final AccessField accessField = (AccessField)this;
                 return accessField.isTopLevelBlockField();
             }
@@ -746,19 +738,16 @@ public final class FieldPrecedenceModel
                 this.version = version;
             }
 
-            @Override
             public String groupQualifiedName()
             {
                 return "wrap";
             }
 
-            @Override
             public String exampleCode()
             {
                 return "wrap(version=" + version + ")";
             }
 
-            @Override
             public String exampleConditions()
             {
                 return "";
@@ -788,19 +777,16 @@ public final class FieldPrecedenceModel
                 return isTopLevelBlockField;
             }
 
-            @Override
             public String groupQualifiedName()
             {
                 return groupPath + token.name();
             }
 
-            @Override
             public String exampleCode()
             {
                 return groupPath + token.name() + "(?)";
             }
 
-            @Override
             public String exampleConditions()
             {
                 return "";
@@ -823,19 +809,16 @@ public final class FieldPrecedenceModel
                 this.token = token;
             }
 
-            @Override
             public String groupQualifiedName()
             {
                 return groupPath + token.name();
             }
 
-            @Override
             String exampleCode()
             {
                 return groupPath + token.name() + "Count(0)";
             }
 
-            @Override
             String exampleConditions()
             {
                 return "";
@@ -858,19 +841,16 @@ public final class FieldPrecedenceModel
                 this.token = token;
             }
 
-            @Override
             public String groupQualifiedName()
             {
                 return groupPath + token.name();
             }
 
-            @Override
             String exampleCode()
             {
                 return groupPath + token.name() + "Count(>0)";
             }
 
-            @Override
             String exampleConditions()
             {
                 return "";
@@ -894,19 +874,16 @@ public final class FieldPrecedenceModel
                 this.token = token;
             }
 
-            @Override
             public String groupQualifiedName()
             {
                 return groupPath + token.name();
             }
 
-            @Override
             String exampleCode()
             {
                 return groupPath + token.name() + ".next()";
             }
 
-            @Override
             String exampleConditions()
             {
                 return "count - newIndex > 1";
@@ -930,19 +907,16 @@ public final class FieldPrecedenceModel
                 this.token = token;
             }
 
-            @Override
             public String groupQualifiedName()
             {
                 return groupPath + token.name();
             }
 
-            @Override
             String exampleCode()
             {
                 return groupPath + token.name() + ".next()";
             }
 
-            @Override
             String exampleConditions()
             {
                 return "count - newIndex == 1";
@@ -965,19 +939,16 @@ public final class FieldPrecedenceModel
                 this.token = token;
             }
 
-            @Override
             public String groupQualifiedName()
             {
                 return groupPath + token.name();
             }
 
-            @Override
             String exampleCode()
             {
                 return groupPath + token.name() + ".resetCountToIndex()";
             }
 
-            @Override
             String exampleConditions()
             {
                 return "";
@@ -1000,25 +971,21 @@ public final class FieldPrecedenceModel
                 this.token = token;
             }
 
-            @Override
             public String groupQualifiedName()
             {
                 return groupPath + token.name();
             }
 
-            @Override
             String exampleCode()
             {
                 return groupPath + token.name() + "Length()";
             }
 
-            @Override
             String exampleConditions()
             {
                 return "";
             }
         }
-
 
         /**
          * Factory for creating {@link CodecInteraction} instances. This factory
@@ -1070,8 +1037,8 @@ public final class FieldPrecedenceModel
              */
             public CodecInteraction accessField(final Token token)
             {
-                return accessFieldInteractions.computeIfAbsent(token,
-                    t -> new AccessField(groupPathsByField.get(t), t, topLevelBlockFields.contains(t)));
+                return accessFieldInteractions.computeIfAbsent(
+                    token, (t) -> new AccessField(groupPathsByField.get(t), t, topLevelBlockFields.contains(t)));
             }
 
             /**
@@ -1091,8 +1058,8 @@ public final class FieldPrecedenceModel
              */
             public CodecInteraction determineGroupIsEmpty(final Token token)
             {
-                return determineGroupIsEmptyInteractions.computeIfAbsent(token,
-                    t -> new DetermineGroupIsEmpty(groupPathsByField.get(t), t));
+                return determineGroupIsEmptyInteractions.computeIfAbsent(
+                    token, (t) -> new DetermineGroupIsEmpty(groupPathsByField.get(t), t));
             }
 
             /**
@@ -1112,8 +1079,8 @@ public final class FieldPrecedenceModel
              */
             public CodecInteraction determineGroupHasElements(final Token token)
             {
-                return determineGroupHasElementsInteractions.computeIfAbsent(token,
-                    t -> new DetermineGroupHasElements(groupPathsByField.get(t), t));
+                return determineGroupHasElementsInteractions.computeIfAbsent(
+                    token, (t) -> new DetermineGroupHasElements(groupPathsByField.get(t), t));
             }
 
             /**
@@ -1130,8 +1097,8 @@ public final class FieldPrecedenceModel
              */
             public CodecInteraction moveToNextElement(final Token token)
             {
-                return moveToNextElementInteractions.computeIfAbsent(token,
-                    t -> new MoveToNextElement(groupPathsByField.get(t), t));
+                return moveToNextElementInteractions.computeIfAbsent(
+                    token, (t) -> new MoveToNextElement(groupPathsByField.get(t), t));
             }
 
             /**
@@ -1146,8 +1113,8 @@ public final class FieldPrecedenceModel
              */
             public CodecInteraction moveToLastElement(final Token token)
             {
-                return moveToLastElementInteractions.computeIfAbsent(token,
-                    t -> new MoveToLastElement(groupPathsByField.get(t), t));
+                return moveToLastElementInteractions.computeIfAbsent(
+                    token, (t) -> new MoveToLastElement(groupPathsByField.get(t), t));
             }
 
             /**
@@ -1164,8 +1131,8 @@ public final class FieldPrecedenceModel
              */
             public CodecInteraction resetCountToIndex(final Token token)
             {
-                return resetCountToIndexInteractions.computeIfAbsent(token,
-                    t -> new ResetCountToIndex(groupPathsByField.get(t), t));
+                return resetCountToIndexInteractions.computeIfAbsent(
+                    token, (t) -> new ResetCountToIndex(groupPathsByField.get(t), t));
             }
 
             /**
@@ -1182,8 +1149,8 @@ public final class FieldPrecedenceModel
              */
             public CodecInteraction accessVarDataLength(final Token token)
             {
-                return accessVarDataLengthInteractions.computeIfAbsent(token,
-                    t -> new AccessVarDataLength(groupPathsByField.get(t), t));
+                return accessVarDataLengthInteractions.computeIfAbsent(
+                    token, (t) -> new AccessVarDataLength(groupPathsByField.get(t), t));
             }
         }
     }

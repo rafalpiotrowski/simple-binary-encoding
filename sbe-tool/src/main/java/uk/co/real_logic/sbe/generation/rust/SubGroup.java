@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -140,6 +140,7 @@ class SubGroup implements RustGenerator.ParentDef
     }
 
     void generateDecoder(
+        final String schemaVersionType,
         final List<Token> tokens,
         final List<Token> fields,
         final List<Token> groups,
@@ -156,16 +157,17 @@ class SubGroup implements RustGenerator.ParentDef
         indent(sb, level - 1, "#[derive(Debug, Default)]\n");
         indent(sb, level - 1, "pub struct %s<P> {\n", name);
         indent(sb, level, "parent: Option<P>,\n");
-        indent(sb, level, "block_length: usize,\n");
+        indent(sb, level, "block_length: %s,\n", rustTypeName(blockLengthPrimitiveType));
         indent(sb, level, "count: %s,\n", rustTypeName(numInGroupPrimitiveType));
         indent(sb, level, "index: usize,\n");
         indent(sb, level, "offset: usize,\n");
         indent(sb, level - 1, "}\n\n");
 
-        RustGenerator.appendImplDecoderForComposite(sb, level - 1, name);
+        final int version = tokens.stream().findFirst().get().version();
+        RustGenerator.appendImplDecoderForComposite(schemaVersionType, version, sb, level - 1, name);
 
         // define impl...
-        indent(sb, level - 1, "impl<'a, P> %s<P> where P: Decoder<'a> + Default {\n", name);
+        indent(sb, level - 1, "impl<'a, P> %s<P> where P: Decoder<'a> + ActingVersion + Default {\n", name);
 
         final int dimensionHeaderSize = tokens.get(index).encodedLength();
 
@@ -175,7 +177,7 @@ class SubGroup implements RustGenerator.ParentDef
         indent(sb, level + 1, "mut parent: P,\n");
         indent(sb, level, ") -> Self {\n");
         indent(sb, level + 1, "let initial_offset = parent.get_limit();\n");
-        indent(sb, level + 1, "let block_length = parent.get_buf().get_%s_at(initial_offset) as usize;\n",
+        indent(sb, level + 1, "let block_length = parent.get_buf().get_%s_at(initial_offset);\n",
             rustTypeName(blockLengthPrimitiveType));
         indent(sb, level + 1, "let count = parent.get_buf().get_%s_at(initial_offset + %d);\n",
             rustTypeName(numInGroupPrimitiveType), numInGroupToken.offset());
@@ -195,6 +197,12 @@ class SubGroup implements RustGenerator.ParentDef
         indent(sb, level, "#[inline]\n");
         indent(sb, level, "pub fn parent(&mut self) -> SbeResult<P> {\n");
         indent(sb, level + 1, "self.parent.take().ok_or(SbeErr::ParentNotSet)\n");
+        indent(sb, level, "}\n\n");
+
+        // acting_version fn...
+        indent(sb, level, "#[inline]\n");
+        indent(sb, level, "pub fn acting_version(&mut self) -> %s {\n", schemaVersionType);
+        indent(sb, level + 1, "self.parent.as_ref().unwrap().acting_version()\n");
         indent(sb, level, "}\n\n");
 
         // count function
@@ -221,7 +229,7 @@ class SubGroup implements RustGenerator.ParentDef
         indent(sb, level, "}\n\n");
 
         RustGenerator.generateDecoderFields(sb, fields, level);
-        RustGenerator.generateDecoderGroups(sb, groups, level, this);
+        RustGenerator.generateDecoderGroups(schemaVersionType, sb, groups, level, this);
         RustGenerator.generateDecoderVarData(sb, varData, level, true);
 
         indent(sb, level - 1, "}\n\n"); // close impl

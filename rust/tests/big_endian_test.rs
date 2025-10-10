@@ -1,5 +1,16 @@
-use baseline_bigendian::*;
-use car_codec::encoder::*;
+use baseline_bigendian::{
+    boolean_type::BooleanType,
+    boost_type::BoostType,
+    car_codec::{
+        encoder::{AccelerationEncoder, FuelFiguresEncoder, PerformanceFiguresEncoder},
+        *,
+    },
+    message_header_codec,
+    message_header_codec::MessageHeaderDecoder,
+    model::Model,
+    optional_extras::OptionalExtras,
+    Encoder, ReadBuf, SbeResult, WriteBuf,
+};
 
 #[test]
 fn big_endian_baseline_example() -> SbeResult<()> {
@@ -32,7 +43,7 @@ fn decode_car_and_assert_expected_content(buffer: &[u8]) -> SbeResult<()> {
     let buf = ReadBuf::new(buffer);
     let header = MessageHeaderDecoder::default().wrap(buf, 0);
     assert_eq!(SBE_TEMPLATE_ID, header.template_id());
-    car = car.header(header);
+    car = car.header(header, 0);
 
     // Car...
     assert_eq!(1234, car.serial_number());
@@ -170,8 +181,8 @@ fn encode_car_from_scratch() -> SbeResult<(usize, Vec<u8>)> {
     car.model_year(2013);
     car.available(BooleanType::T);
     car.code(Model::A);
-    car.some_numbers([0, 1, 2, 3, 4]);
-    car.vehicle_code(*b"abcdef");
+    car.some_numbers(&[0, 1, 2, 3, 4]);
+    car.vehicle_code(b"abcdef");
 
     extras.set_cruise_control(true);
     extras.set_sports_pack(true);
@@ -181,7 +192,7 @@ fn encode_car_from_scratch() -> SbeResult<(usize, Vec<u8>)> {
     let mut engine = car.engine_encoder();
     engine.capacity(2000);
     engine.num_cylinders(4);
-    engine.manufacturer_code(*b"123");
+    engine.manufacturer_code(b"123");
     engine.efficiency(35);
     engine.booster_enabled(BooleanType::T);
     let mut booster = engine.booster_encoder();

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ import java.io.IOException;
 import java.io.Writer;
 import java.nio.ByteOrder;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static uk.co.real_logic.sbe.generation.Generators.toLowerFirstChar;
 import static uk.co.real_logic.sbe.generation.Generators.toUpperFirstChar;
@@ -48,6 +49,8 @@ public class CppGenerator implements CodeGenerator
 {
     private static final boolean DISABLE_IMPLICIT_COPYING = Boolean.parseBoolean(
         System.getProperty("sbe.cpp.disable.implicit.copying", "false"));
+    private static final boolean DISABLE_RAW_ARRAYS = Boolean.parseBoolean(
+        System.getProperty("sbe.cpp.disable.raw.arrays", "false"));
     private static final String BASE_INDENT = "";
     private static final String INDENT = "    ";
     private static final String TWO_INDENT = INDENT + INDENT;
@@ -58,6 +61,8 @@ public class CppGenerator implements CodeGenerator
     private final boolean shouldDecodeUnknownEnumValues;
     private final PrecedenceChecks precedenceChecks;
     private final String precedenceChecksFlagName;
+    private final boolean shouldSupportTypesPackageNames;
+    private final Map<String, String> namespaceByType = new HashMap<>();
 
     /**
      * Create a new Cpp language {@link CodeGenerator}.
@@ -72,6 +77,7 @@ public class CppGenerator implements CodeGenerator
             ir,
             shouldDecodeUnknownEnumValues,
             PrecedenceChecks.newInstance(new PrecedenceChecks.Context()),
+            false,
             outputManager
         );
     }
@@ -79,15 +85,17 @@ public class CppGenerator implements CodeGenerator
     /**
      * Create a new Go language {@link CodeGenerator}.
      *
-     * @param ir                            for the messages and types.
-     * @param shouldDecodeUnknownEnumValues generate support for unknown enum values when decoding.
-     * @param precedenceChecks              whether and how to generate field precedence checks.
-     * @param outputManager                 for generating the codecs to.
+     * @param ir                             for the messages and types.
+     * @param shouldDecodeUnknownEnumValues  generate support for unknown enum values when decoding.
+     * @param precedenceChecks               whether and how to generate field precedence checks.
+     * @param shouldSupportTypesPackageNames generator support for types in their own package.
+     * @param outputManager                  for generating the codecs to.
      */
     public CppGenerator(
         final Ir ir,
         final boolean shouldDecodeUnknownEnumValues,
         final PrecedenceChecks precedenceChecks,
+        final boolean shouldSupportTypesPackageNames,
         final OutputManager outputManager)
     {
         Verify.notNull(ir, "ir");
@@ -97,6 +105,7 @@ public class CppGenerator implements CodeGenerator
         this.shouldDecodeUnknownEnumValues = shouldDecodeUnknownEnumValues;
         this.precedenceChecks = precedenceChecks;
         this.precedenceChecksFlagName = precedenceChecks.context().precedenceChecksFlagName();
+        this.shouldSupportTypesPackageNames = shouldSupportTypesPackageNames;
         this.outputManager = outputManager;
     }
 
@@ -140,6 +149,21 @@ public class CppGenerator implements CodeGenerator
         return typesToInclude;
     }
 
+    private String[] fetchTypesPackageName(final Token token, final Ir ir)
+    {
+        if (!shouldSupportTypesPackageNames)
+        {
+            return ir.namespaces();
+        }
+
+        if (token.packageName() != null)
+        {
+            return Ir.getNamespaces(token.packageName());
+        }
+
+        return ir.namespaces();
+    }
+
     private List<String> generateTypesToIncludes(final List<Token> tokens)
     {
         final List<String> typesToInclude = new ArrayList<>();
@@ -167,6 +191,22 @@ public class CppGenerator implements CodeGenerator
      */
     public void generate() throws IOException
     {
+        namespaceByType.clear();
+
+        if (shouldSupportTypesPackageNames)
+        {
+            for (final List<Token> tokens : ir.types())
+            {
+                final Token token = tokens.get(0);
+                final String packageName = token.packageName();
+
+                if (packageName != null)
+                {
+                    namespaceByType.put(token.applicableTypeName(), packageName);
+                }
+            }
+        }
+
         generateMessageHeaderStub();
         final List<String> typesToInclude = generateTypeStubs();
 
@@ -192,7 +232,8 @@ public class CppGenerator implements CodeGenerator
                 final List<Token> varData = new ArrayList<>();
                 collectVarData(messageBody, i, varData);
 
-                out.append(generateFileHeader(ir.namespaces(), className, typesToInclude));
+                final String[] namespaces = fetchTypesPackageName(msgToken, ir);
+                out.append(generateFileHeader(namespaces, className, typesToInclude));
                 out.append(generateClassDeclaration(className));
                 out.append(generateMessageFlyweightCode(className, msgToken, fieldPrecedenceModel));
                 out.append(generateFullyEncodedCheck(fieldPrecedenceModel));
@@ -205,7 +246,7 @@ public class CppGenerator implements CodeGenerator
                 sb.append(generateMessageLength(groups, varData, BASE_INDENT));
                 sb.append("};\n");
                 generateLookupTableDefinitions(sb, className, fieldPrecedenceModel);
-                sb.append(CppUtil.closingBraces(ir.namespaces().length)).append("#endif\n");
+                sb.append(CppUtil.closingBraces(namespaces.length)).append("#endif\n");
                 out.append(sb);
             }
         }
@@ -249,12 +290,12 @@ public class CppGenerator implements CodeGenerator
 
     private static String accessOrderListenerMethodName(final Token token)
     {
-        return "on" + Generators.toUpperFirstChar(token.name()) + "Accessed";
+        return "on" + Generators.toUpperFirstChar(formatPropertyName(token.name())) + "Accessed";
     }
 
     private static String accessOrderListenerMethodName(final Token token, final String suffix)
     {
-        return "on" + Generators.toUpperFirstChar(token.name()) + suffix + "Accessed";
+        return "on" + Generators.toUpperFirstChar(formatPropertyName(token.name())) + suffix + "Accessed";
     }
 
     private static void generateAccessOrderListenerMethod(
@@ -495,6 +536,18 @@ public class CppGenerator implements CodeGenerator
             .append(fieldPrecedenceModel.generatedRepresentationClassName()).append(".\");\n");
     }
 
+    private static void generateAccessOrderException(
+        final StringBuilder sb,
+        final String indent,
+        final String action)
+    {
+        sb.append(indent).append("throw AccessOrderError(")
+            .append("std::string(\"Illegal access. \") + \n")
+            .append(indent).append(INDENT)
+            .append("\"Cannot call \\\"").append(action)
+            .append("()\\\" in state: \" + codecStateName(codecState()));\n");
+    }
+
     private static void generateAccessOrderListenerMethodForNextGroupElement(
         final StringBuilder sb,
         final FieldPrecedenceModel fieldPrecedenceModel,
@@ -655,6 +708,7 @@ public class CppGenerator implements CodeGenerator
 
         if (null != fieldPrecedenceModel)
         {
+            sb.append("#if defined(").append(precedenceChecksFlagName).append(")\n");
             new Formatter(sb).format(
                 indent + "    CodecState *m_codecStatePtr = nullptr;\n\n" +
 
@@ -671,19 +725,38 @@ public class CppGenerator implements CodeGenerator
                 indent + "    void codecState(CodecState codecState)\n" +
                 indent + "    {\n" +
                 indent + "        *m_codecStatePtr = codecState;\n" +
-                indent + "    }\n\n"
+                indent + "    }\n"
             );
+            sb.append("#else\n");
+            new Formatter(sb).format(
+                indent + "    CodecState codecState() const SBE_NOEXCEPT\n" +
+                indent + "    {\n" +
+                indent + "        return " + qualifiedStateCase(fieldPrecedenceModel.notWrappedState()) + ";\n" +
+                indent + "    }\n\n" +
+
+                indent + "    CodecState *codecStatePtr()\n" +
+                indent + "    {\n" +
+                indent + "        return nullptr;\n" +
+                indent + "    }\n\n" +
+
+                indent + "    void codecState(CodecState codecState)\n" +
+                indent + "    {\n" +
+                indent + "    }\n"
+            );
+            sb.append("#endif\n\n");
         }
 
         sb.append(generateHiddenCopyConstructor(indent + "    ", groupClassName));
 
         final String codecStateParameter = null == fieldPrecedenceModel ?
             ")\n" :
-            ",\n " + indent + "        CodecState *codecState)\n";
+            ",\n" + indent + "        CodecState *codecState)\n";
 
         final String codecStateAssignment = null == fieldPrecedenceModel ?
             "" :
-            indent + "        m_codecStatePtr = codecState;\n";
+            "#if defined(" + precedenceChecksFlagName + ")\n" +
+            indent + "        m_codecStatePtr = codecState;\n" +
+            "#endif\n";
 
         new Formatter(sb).format(
             indent + "public:\n" +
@@ -763,7 +836,9 @@ public class CppGenerator implements CodeGenerator
         {
             final String codecStateNullAssignment = null == fieldPrecedenceModel ?
                 "" :
-                indent + "        m_codecStatePtr = nullptr;\n";
+                "#if defined(" + precedenceChecksFlagName + ")\n" +
+                indent + "        m_codecStatePtr = nullptr;\n" +
+                "#endif\n";
 
             new Formatter(sb).format(
                 indent + "    inline void notPresent(std::uint64_t actingVersion)\n" +
@@ -1162,7 +1237,7 @@ public class CppGenerator implements CodeGenerator
                 lengthCppType,
                 accessOrderListenerCall);
 
-            generateJsonEscapedStringGetter(sb, token, indent, propertyName, accessOrderListenerCall);
+            generateJsonEscapedStringGetter(sb, token, indent, propertyName);
 
             new Formatter(sb).format("\n" +
                 indent + "    #if __cplusplus >= 201703L\n" +
@@ -1277,7 +1352,8 @@ public class CppGenerator implements CodeGenerator
 
         try (Writer out = outputManager.createOutput(bitSetName))
         {
-            out.append(generateFileHeader(ir.namespaces(), bitSetName, null));
+            final String[] namespaces = fetchTypesPackageName(token, ir);
+            out.append(generateFileHeader(namespaces, bitSetName, null));
             out.append(generateClassDeclaration(bitSetName));
             out.append(generateFixedFlyweightCode(bitSetName, token.encodedLength()));
 
@@ -1322,18 +1398,19 @@ public class CppGenerator implements CodeGenerator
             out.append(generateChoices(bitSetName, tokens.subList(1, tokens.size() - 1)));
             out.append(generateChoicesDisplay(bitSetName, tokens.subList(1, tokens.size() - 1)));
             out.append("};\n");
-            out.append(CppUtil.closingBraces(ir.namespaces().length)).append("#endif\n");
+            out.append(CppUtil.closingBraces(namespaces.length)).append("#endif\n");
         }
     }
 
     private void generateEnum(final List<Token> tokens) throws IOException
     {
         final Token enumToken = tokens.get(0);
-        final String enumName = formatClassName(tokens.get(0).applicableTypeName());
+        final String enumName = formatClassName(enumToken.applicableTypeName());
 
         try (Writer out = outputManager.createOutput(enumName))
         {
-            out.append(generateEnumFileHeader(ir.namespaces(), enumName));
+            final String[] namespaces = fetchTypesPackageName(enumToken, ir);
+            out.append(generateEnumFileHeader(namespaces, enumName));
             out.append(generateEnumDeclaration(enumName));
 
             out.append(generateEnumValues(tokens.subList(1, tokens.size() - 1), enumToken));
@@ -1343,29 +1420,31 @@ public class CppGenerator implements CodeGenerator
             out.append(generateEnumDisplay(tokens.subList(1, tokens.size() - 1), enumToken));
 
             out.append("};\n\n");
-            out.append(CppUtil.closingBraces(ir.namespaces().length)).append("\n#endif\n");
+            out.append(CppUtil.closingBraces(namespaces.length)).append("\n#endif\n");
         }
     }
 
     private void generateComposite(final List<Token> tokens) throws IOException
     {
-        final String compositeName = formatClassName(tokens.get(0).applicableTypeName());
+        final Token token = tokens.get(0);
+        final String compositeName = formatClassName(token.applicableTypeName());
 
         try (Writer out = outputManager.createOutput(compositeName))
         {
-            out.append(generateFileHeader(ir.namespaces(), compositeName,
+            final String[] namespaces = fetchTypesPackageName(token, ir);
+            out.append(generateFileHeader(namespaces, compositeName,
                 generateTypesToIncludes(tokens.subList(1, tokens.size() - 1))));
             out.append(generateClassDeclaration(compositeName));
-            out.append(generateFixedFlyweightCode(compositeName, tokens.get(0).encodedLength()));
+            out.append(generateFixedFlyweightCode(compositeName, token.encodedLength()));
 
             out.append(generateCompositePropertyElements(
                 compositeName, tokens.subList(1, tokens.size() - 1), BASE_INDENT));
 
             out.append(generateCompositeDisplay(
-                tokens.get(0).applicableTypeName(), tokens.subList(1, tokens.size() - 1)));
+                token.applicableTypeName(), tokens.subList(1, tokens.size() - 1)));
 
             out.append("};\n\n");
-            out.append(CppUtil.closingBraces(ir.namespaces().length)).append("\n#endif\n");
+            out.append(CppUtil.closingBraces(namespaces.length)).append("\n#endif\n");
         }
     }
 
@@ -1471,7 +1550,11 @@ public class CppGenerator implements CodeGenerator
         {
             final CharSequence constVal = generateLiteral(
                 token.encoding().primitiveType(), token.encoding().constValue().toString());
-            sb.append("        ").append(token.name()).append(" = ").append(constVal).append(",\n");
+            sb.append("        ")
+                .append(formatForCppKeyword(token.name()))
+                .append(" = ")
+                .append(constVal)
+                .append(",\n");
         }
 
         final CharSequence nullLiteral = generateLiteral(
@@ -1505,7 +1588,11 @@ public class CppGenerator implements CodeGenerator
             final CharSequence constVal = generateLiteral(
                 token.encoding().primitiveType(), token.encoding().constValue().toString());
 
-            sb.append("            case ").append(constVal).append(": return ").append(token.name()).append(";\n");
+            sb.append("            case ")
+                .append(constVal)
+                .append(": return ")
+                .append(formatForCppKeyword(token.name()))
+                .append(";\n");
         }
 
         final CharSequence nullVal = generateLiteral(
@@ -1561,6 +1648,23 @@ public class CppGenerator implements CodeGenerator
             sinceVersion);
     }
 
+    private static CharSequence generateSpanFieldNotPresentCondition(
+        final int sinceVersion, final String indent, final String cppTypeName)
+    {
+        if (0 == sinceVersion)
+        {
+            return "";
+        }
+
+        return String.format(
+            indent + "        if (m_actingVersion < %1$d)\n" +
+            indent + "        {\n" +
+            indent + "            return std::span<const %2$s>();\n" +
+            indent + "        }\n\n",
+            sinceVersion,
+            cppTypeName);
+    }
+
     private static CharSequence generateStringNotPresentCondition(final int sinceVersion, final String indent)
     {
         if (0 == sinceVersion)
@@ -1606,7 +1710,7 @@ public class CppGenerator implements CodeGenerator
             sinceVersion);
     }
 
-    private static CharSequence generateFileHeader(
+    private CharSequence generateFileHeader(
         final CharSequence[] namespaces,
         final String className,
         final List<String> typesToInclude)
@@ -1630,8 +1734,18 @@ public class CppGenerator implements CodeGenerator
             "#if __cplusplus >= 201703L\n" +
             "#  include <string_view>\n" +
             "#  define SBE_NODISCARD [[nodiscard]]\n" +
+            "#  if !defined(SBE_USE_STRING_VIEW)\n" +
+            "#    define SBE_USE_STRING_VIEW 1\n" +
+            "#  endif\n" +
             "#else\n" +
             "#  define SBE_NODISCARD\n" +
+            "#endif\n\n" +
+
+            "#if __cplusplus >= 202002L\n" +
+            "#  include <span>\n" +
+            "#  if !defined(SBE_USE_SPAN)\n" +
+            "#    define SBE_USE_SPAN 1\n" +
+            "#  endif\n" +
             "#endif\n\n" +
 
             "#if !defined(__STDC_LIMIT_MACROS)\n" +
@@ -1711,6 +1825,32 @@ public class CppGenerator implements CodeGenerator
         sb.append("\nnamespace ");
         sb.append(String.join(" {\nnamespace ", namespaces));
         sb.append(" {\n\n");
+
+        if (shouldSupportTypesPackageNames && typesToInclude != null && !typesToInclude.isEmpty())
+        {
+            final Set<String> namespacesToUse = namespaceByType
+                .entrySet()
+                .stream()
+                .filter(e -> typesToInclude.contains(e.getKey()))
+                .map(Map.Entry::getValue)
+                .collect(Collectors.toSet());
+
+            // remove the current namespace
+            namespacesToUse.remove(String.join(".", namespaces));
+
+            for (final String namespace : namespacesToUse)
+            {
+                sb
+                    .append("using namespace ")
+                    .append(namespace.replaceAll("\\.", "::"))
+                    .append(";\n");
+            }
+
+            if (!namespacesToUse.isEmpty())
+            {
+                sb.append("\n");
+            }
+        }
 
         return sb;
     }
@@ -2159,12 +2299,38 @@ public class CppGenerator implements CodeGenerator
             accessOrderListenerCall);
 
         new Formatter(sb).format("\n" +
-            indent + "    %1$s &put%2$s(const char *const src)%7$s\n" +
+            indent + "    #ifdef SBE_USE_SPAN\n" +
+            indent + "    SBE_NODISCARD std::span<const %5$s> get%1$sAsSpan() const%7$s\n" +
             indent + "    {\n" +
+            "%3$s" +
             "%6$s" +
-            indent + "        std::memcpy(m_buffer + m_offset + %3$d, src, sizeof(%4$s) * %5$d);\n" +
+            indent + "        const char *buffer = m_buffer + m_offset + %4$d;\n" +
+            indent + "        return std::span<const %5$s>(reinterpret_cast<const %5$s*>(buffer), %2$d);\n" +
+            indent + "    }\n" +
+            indent + "    #endif\n",
+            toUpperFirstChar(propertyName),
+            arrayLength,
+            generateSpanFieldNotPresentCondition(propertyToken.version(), indent, cppTypeName),
+            offset,
+            cppTypeName,
+            accessOrderListenerCall,
+            noexceptDeclaration);
+
+        new Formatter(sb).format("\n" +
+            indent + "    #ifdef SBE_USE_SPAN\n" +
+            indent + "    template <std::size_t N>\n" +
+            indent + "    %1$s &put%2$s(std::span<const %4$s, N> src)%7$s\n" +
+            indent + "    {\n" +
+            indent + "        static_assert(N <= %5$d, \"array too large for put%2$s\");\n\n" +
+            "%6$s" +
+            indent + "        std::memcpy(m_buffer + m_offset + %3$d, src.data(), sizeof(%4$s) * N);\n" +
+            indent + "        for (std::size_t start = N; start < %5$d; ++start)\n" +
+            indent + "        {\n" +
+            indent + "            m_buffer[m_offset + %3$d + start] = 0;\n" +
+            indent + "        }\n\n" +
             indent + "        return *this;\n" +
-            indent + "    }\n",
+            indent + "    }\n" +
+            indent + "    #endif\n",
             containingClassName,
             toUpperFirstChar(propertyName),
             offset,
@@ -2172,6 +2338,79 @@ public class CppGenerator implements CodeGenerator
             arrayLength,
             accessOrderListenerCall,
             noexceptDeclaration);
+
+        if (encodingToken.encoding().primitiveType() != PrimitiveType.CHAR)
+        {
+            new Formatter(sb).format("\n" +
+                indent + "    #ifdef SBE_USE_SPAN\n" +
+                indent + "    %1$s &put%2$s(std::span<const %4$s> src)\n" +
+                indent + "    {\n" +
+                indent + "        const std::size_t srcLength = src.size();\n" +
+                indent + "        if (srcLength > %5$d)\n" +
+                indent + "        {\n" +
+                indent + "            throw std::runtime_error(\"array too large for put%2$s [E106]\");\n" +
+                indent + "        }\n\n" +
+
+                "%6$s" +
+                indent + "        std::memcpy(m_buffer + m_offset + %3$d, src.data(), sizeof(%4$s) * srcLength);\n" +
+                indent + "        for (std::size_t start = srcLength; start < %5$d; ++start)\n" +
+                indent + "        {\n" +
+                indent + "            m_buffer[m_offset + %3$d + start] = 0;\n" +
+                indent + "        }\n\n" +
+                indent + "        return *this;\n" +
+                indent + "    }\n" +
+                indent + "    #endif\n",
+                containingClassName,
+                toUpperFirstChar(propertyName),
+                offset,
+                cppTypeName,
+                arrayLength,
+                accessOrderListenerCall);
+        }
+
+        if (!DISABLE_RAW_ARRAYS)
+        {
+            new Formatter(sb).format("\n" +
+                indent + "    #ifdef SBE_USE_SPAN\n" +
+                indent + "    template <typename T>\n" +
+                // If std::span is available, redirect string literals to the std::span-accepting overload,
+                // where we can do compile-time bounds checking.
+                indent + "    %1$s &put%2$s(T&& src) %7$s requires\n" +
+                indent + "        (std::is_pointer_v<std::remove_reference_t<T>> &&\n" +
+                indent + "         !std::is_array_v<std::remove_reference_t<T>>)\n" +
+                indent + "    #else\n" +
+                indent + "    %1$s &put%2$s(const char *const src)%7$s\n" +
+                indent + "    #endif\n" +
+                indent + "    {\n" +
+                "%6$s" +
+                indent + "        std::memcpy(m_buffer + m_offset + %3$d, src, sizeof(%4$s) * %5$d);\n" +
+                indent + "        return *this;\n" +
+                indent + "    }\n",
+                containingClassName,
+                toUpperFirstChar(propertyName),
+                offset,
+                cppTypeName,
+                arrayLength,
+                accessOrderListenerCall,
+                noexceptDeclaration);
+
+        }
+        if (encodingToken.encoding().primitiveType() == PrimitiveType.CHAR)
+        {
+            // Resolve ambiguity of string literal arguments, which match both
+            // std::span<const char, N> and std::string_view overloads.
+            new Formatter(sb).format("\n" +
+                indent + "    #ifdef SBE_USE_SPAN\n" +
+                indent + "    template <std::size_t N>\n" +
+                indent + "    %1$s &put%2$s(const char (&src)[N])%3$s\n" +
+                indent + "    {\n" +
+                indent + "        return put%2$s(std::span<const char, N>(src));\n" +
+                indent + "    }\n" +
+                indent + "    #endif\n",
+                containingClassName,
+                toUpperFirstChar(propertyName),
+                noexceptDeclaration);
+        }
 
         if (arrayLength > 1 && arrayLength <= 4)
         {
@@ -2230,10 +2469,10 @@ public class CppGenerator implements CodeGenerator
                 generateStringNotPresentCondition(propertyToken.version(), indent),
                 accessOrderListenerCall);
 
-            generateJsonEscapedStringGetter(sb, encodingToken, indent, propertyName, accessOrderListenerCall);
+            generateJsonEscapedStringGetter(sb, encodingToken, indent, propertyName);
 
             new Formatter(sb).format("\n" +
-                indent + "    #if __cplusplus >= 201703L\n" +
+                indent + "    #ifdef SBE_USE_STRING_VIEW\n" +
                 indent + "    SBE_NODISCARD std::string_view get%1$sAsStringView() const%6$s\n" +
                 indent + "    {\n" +
                 "%4$s" +
@@ -2255,7 +2494,7 @@ public class CppGenerator implements CodeGenerator
                 noexceptDeclaration);
 
             new Formatter(sb).format("\n" +
-                indent + "    #if __cplusplus >= 201703L\n" +
+                indent + "    #ifdef SBE_USE_STRING_VIEW\n" +
                 indent + "    %1$s &put%2$s(const std::string_view str)\n" +
                 indent + "    {\n" +
                 indent + "        const std::size_t srcLength = str.length();\n" +
@@ -2304,14 +2543,12 @@ public class CppGenerator implements CodeGenerator
         final StringBuilder sb,
         final Token token,
         final String indent,
-        final String propertyName,
-        final CharSequence accessOrderListenerCall)
+        final String propertyName)
     {
         new Formatter(sb).format("\n" +
             indent + "    std::string get%1$sAsJsonEscapedString()\n" +
             indent + "    {\n" +
             "%2$s" +
-            "%3$s" +
             indent + "        std::ostringstream oss;\n" +
             indent + "        std::string s = get%1$sAsString();\n\n" +
             indent + "        for (const auto c : s)\n" +
@@ -2340,8 +2577,7 @@ public class CppGenerator implements CodeGenerator
             indent + "        return oss.str();\n" +
             indent + "    }\n",
             toUpperFirstChar(propertyName),
-            generateStringNotPresentCondition(token.version(), indent),
-            accessOrderListenerCall);
+            generateStringNotPresentCondition(token.version(), indent));
     }
 
     private void generateConstPropertyMethods(
@@ -2428,7 +2664,7 @@ public class CppGenerator implements CodeGenerator
             values,
             constantValue.length);
 
-        generateJsonEscapedStringGetter(sb, token, indent, propertyName, "");
+        generateJsonEscapedStringGetter(sb, token, indent, propertyName);
     }
 
     private CharSequence generateFixedFlyweightCode(final String className, final int size)
@@ -2577,33 +2813,12 @@ public class CppGenerator implements CodeGenerator
         return DISABLE_IMPLICIT_COPYING ? ctorAndCopyAssignmentDeletion : "";
     }
 
-    private static CharSequence generateConstructorsAndOperators(
+    private CharSequence generateConstructorsAndOperators(
         final String className,
         final FieldPrecedenceModel fieldPrecedenceModel)
     {
-        final String constructorWithCodecState = null == fieldPrecedenceModel ? "" : String.format(
-            "    %1$s(\n" +
-            "        char *buffer,\n" +
-            "        const std::uint64_t offset,\n" +
-            "        const std::uint64_t bufferLength,\n" +
-            "        const std::uint64_t actingBlockLength,\n" +
-            "        const std::uint64_t actingVersion,\n" +
-            "        CodecState codecState) :\n" +
-            "        m_buffer(buffer),\n" +
-            "        m_bufferLength(bufferLength),\n" +
-            "        m_offset(offset),\n" +
-            "        m_position(sbeCheckPosition(offset + actingBlockLength)),\n" +
-            "        m_actingBlockLength(actingBlockLength),\n" +
-            "        m_actingVersion(actingVersion),\n" +
-            "        m_codecState(codecState)\n" +
-            "    {\n" +
-            "    }\n\n",
-            className);
-
         return String.format(
             "    %1$s() = default;\n\n" +
-
-            "%2$s" +
 
             "    %1$s(\n" +
             "        char *buffer,\n" +
@@ -2618,6 +2833,7 @@ public class CppGenerator implements CodeGenerator
             "        m_actingBlockLength(actingBlockLength),\n" +
             "        m_actingVersion(actingVersion)\n" +
             "    {\n" +
+            "%2$s" +
             "    }\n\n" +
 
             "    %1$s(char *buffer, const std::uint64_t bufferLength) :\n" +
@@ -2634,7 +2850,7 @@ public class CppGenerator implements CodeGenerator
             "    {\n" +
             "    }\n\n",
             className,
-            constructorWithCodecState);
+            generateCodecStateTransitionForWrapping(fieldPrecedenceModel));
     }
 
     private CharSequence generateMessageFlyweightCode(
@@ -2651,32 +2867,31 @@ public class CppGenerator implements CodeGenerator
         final String semanticVersion = ir.semanticVersion() == null ? "" : ir.semanticVersion();
 
 
-        final String codecStateArgument = null == fieldPrecedenceModel ? "" : ", m_codecState";
-
         return String.format(
             "private:\n" +
+            "%14$s" +
             "%15$s" +
-            "%16$s" +
             "    char *m_buffer = nullptr;\n" +
             "    std::uint64_t m_bufferLength = 0;\n" +
             "    std::uint64_t m_offset = 0;\n" +
             "    std::uint64_t m_position = 0;\n" +
             "    std::uint64_t m_actingBlockLength = 0;\n" +
             "    std::uint64_t m_actingVersion = 0;\n" +
-            "%17$s" +
+            "%16$s" +
 
             "    inline std::uint64_t *sbePositionPtr() SBE_NOEXCEPT\n" +
             "    {\n" +
             "        return &m_position;\n" +
             "    }\n\n" +
 
-            "%22$s" +
+            "%19$s" +
+            "%21$s" +
 
             "public:\n" +
-            "    static const %1$s SBE_BLOCK_LENGTH = %2$s;\n" +
-            "    static const %3$s SBE_TEMPLATE_ID = %4$s;\n" +
-            "    static const %5$s SBE_SCHEMA_ID = %6$s;\n" +
-            "    static const %7$s SBE_SCHEMA_VERSION = %8$s;\n" +
+            "    static constexpr %1$s SBE_BLOCK_LENGTH = %2$s;\n" +
+            "    static constexpr %3$s SBE_TEMPLATE_ID = %4$s;\n" +
+            "    static constexpr %5$s SBE_SCHEMA_ID = %6$s;\n" +
+            "    static constexpr %7$s SBE_SCHEMA_VERSION = %8$s;\n" +
             "    static constexpr const char* SBE_SEMANTIC_VERSION = \"%13$s\";\n\n" +
 
             "    enum MetaAttribute\n" +
@@ -2698,7 +2913,7 @@ public class CppGenerator implements CodeGenerator
 
             "    using messageHeader = %12$s;\n\n" +
 
-            "%18$s" +
+            "%17$s" +
             "%11$s" +
 
             "    SBE_NODISCARD static SBE_CONSTEXPR %1$s sbeBlockLength() SBE_NOEXCEPT\n" +
@@ -2749,7 +2964,7 @@ public class CppGenerator implements CodeGenerator
             "        m_actingBlockLength = sbeBlockLength();\n" +
             "        m_actingVersion = sbeSchemaVersion();\n" +
             "        m_position = sbeCheckPosition(m_offset + m_actingBlockLength);\n" +
-            "%19$s" +
+            "%18$s" +
             "        return *this;\n" +
             "    }\n\n" +
 
@@ -2770,11 +2985,9 @@ public class CppGenerator implements CodeGenerator
             "        m_actingBlockLength = sbeBlockLength();\n" +
             "        m_actingVersion = sbeSchemaVersion();\n" +
             "        m_position = sbeCheckPosition(m_offset + m_actingBlockLength);\n" +
-            "%19$s" +
+            "%18$s" +
             "        return *this;\n" +
             "    }\n\n" +
-
-            "%20$s" +
 
             "    %10$s &wrapForDecode(\n" +
             "        char *buffer,\n" +
@@ -2789,7 +3002,7 @@ public class CppGenerator implements CodeGenerator
             "        m_actingBlockLength = actingBlockLength;\n" +
             "        m_actingVersion = actingVersion;\n" +
             "        m_position = sbeCheckPosition(m_offset + m_actingBlockLength);\n" +
-            "%21$s" +
+            "%20$s" +
             "        return *this;\n" +
             "    }\n\n" +
 
@@ -2826,7 +3039,8 @@ public class CppGenerator implements CodeGenerator
 
             "    SBE_NODISCARD std::uint64_t decodeLength() const\n" +
             "    {\n" +
-            "        %10$s skipper(m_buffer, m_offset, m_bufferLength, sbeBlockLength(), m_actingVersion%14$s);\n" +
+            "%22$s" +
+            "        %10$s skipper(m_buffer, m_offset, m_bufferLength, m_actingBlockLength, m_actingVersion);\n" +
             "        skipper.skip();\n" +
             "        return skipper.encodedLength();\n" +
             "    }\n\n" +
@@ -2863,15 +3077,15 @@ public class CppGenerator implements CodeGenerator
             generateConstructorsAndOperators(className, fieldPrecedenceModel),
             formatClassName(headerType),
             semanticVersion,
-            codecStateArgument,
             generateFieldOrderStateEnum(fieldPrecedenceModel),
             generateLookupTableDeclarations(fieldPrecedenceModel),
             generateFieldOrderStateMember(fieldPrecedenceModel),
             generateAccessOrderErrorType(fieldPrecedenceModel),
-            generateEncoderWrapListener(fieldPrecedenceModel),
-            generateDecoderWrapListener(fieldPrecedenceModel),
-            generateDecoderWrapListenerCall(fieldPrecedenceModel),
-            generateHiddenCopyConstructor("    ", className));
+            generateCodecStateTransitionForWrappingLatestVersion(fieldPrecedenceModel),
+            generateOnWrappedListener(fieldPrecedenceModel),
+            generateCodecStateTransitionForWrapping(fieldPrecedenceModel),
+            generateHiddenCopyConstructor("    ", className),
+            generateCheckForNotWrappedState("decodeLength", fieldPrecedenceModel));
     }
 
     private CharSequence generateAccessOrderErrorType(final FieldPrecedenceModel fieldPrecedenceModel)
@@ -2898,12 +3112,39 @@ public class CppGenerator implements CodeGenerator
         }
 
         final StringBuilder sb = new StringBuilder();
-        sb.append(INDENT).append("static const std::string STATE_NAME_LOOKUP[")
-            .append(fieldPrecedenceModel.stateCount())
-            .append("];\n");
-        sb.append(INDENT).append("static const std::string STATE_TRANSITIONS_LOOKUP[")
-            .append(fieldPrecedenceModel.stateCount())
-            .append("];\n\n");
+
+        sb.append(INDENT).append("static constexpr const char *STATE_NAME_LOOKUP[] =\n")
+            .append(INDENT).append("{\n");
+        fieldPrecedenceModel.forEachStateOrderedByStateNumber((state) ->
+            sb.append(INDENT).append(INDENT).append("\"").append(state.name()).append("\",\n"));
+        sb.append(INDENT).append("};\n\n");
+
+        sb.append(INDENT).append("static constexpr const char *STATE_TRANSITIONS_LOOKUP[] =\n")
+            .append(INDENT).append("{\n");
+        fieldPrecedenceModel.forEachStateOrderedByStateNumber((state) ->
+        {
+            sb.append(INDENT).append(INDENT).append("\"");
+            final MutableBoolean isFirst = new MutableBoolean(true);
+            final Set<String> transitionDescriptions = new HashSet<>();
+            fieldPrecedenceModel.forEachTransitionFrom(state, (transitionGroup) ->
+            {
+                if (transitionDescriptions.add(transitionGroup.exampleCode()))
+                {
+                    if (isFirst.get())
+                    {
+                        isFirst.set(false);
+                    }
+                    else
+                    {
+                        sb.append(", ");
+                    }
+
+                    sb.append("\\\"").append(transitionGroup.exampleCode()).append("\\\"");
+                }
+            });
+            sb.append("\",\n");
+        });
+        sb.append(INDENT).append("};\n\n");
 
         sb.append(INDENT).append("static std::string codecStateName(CodecState state)\n")
             .append(INDENT).append("{\n")
@@ -2928,40 +3169,13 @@ public class CppGenerator implements CodeGenerator
             return;
         }
 
-        sb.append("\n").append("const std::string ").append(className).append("::STATE_NAME_LOOKUP[")
-            .append(fieldPrecedenceModel.stateCount()).append("] =\n")
-            .append("{\n");
-        fieldPrecedenceModel.forEachStateOrderedByStateNumber((state) ->
-            sb.append(INDENT).append("\"").append(state.name()).append("\",\n"));
-        sb.append("};\n\n");
-
-        sb.append("const std::string ").append(className).append("::STATE_TRANSITIONS_LOOKUP[")
-            .append(fieldPrecedenceModel.stateCount()).append("] =\n")
-            .append("{\n");
-        fieldPrecedenceModel.forEachStateOrderedByStateNumber((state) ->
-        {
-            sb.append(INDENT).append("\"");
-            final MutableBoolean isFirst = new MutableBoolean(true);
-            final Set<String> transitionDescriptions = new HashSet<>();
-            fieldPrecedenceModel.forEachTransitionFrom(state, (transitionGroup) ->
-            {
-                if (transitionDescriptions.add(transitionGroup.exampleCode()))
-                {
-                    if (isFirst.get())
-                    {
-                        isFirst.set(false);
-                    }
-                    else
-                    {
-                        sb.append(", ");
-                    }
-
-                    sb.append("\\\"").append(transitionGroup.exampleCode()).append("\\\"");
-                }
-            });
-            sb.append("\",\n");
-        });
-        sb.append("};\n\n");
+        sb
+            .append("\nconstexpr const char *")
+            .append(className)
+            .append("::STATE_NAME_LOOKUP[];\n")
+            .append("constexpr const char *")
+            .append(className)
+            .append("::STATE_TRANSITIONS_LOOKUP[];\n\n");
     }
 
     private static CharSequence qualifiedStateCase(final FieldPrecedenceModel.State state)
@@ -3041,7 +3255,7 @@ public class CppGenerator implements CodeGenerator
         return sb;
     }
 
-    private static CharSequence generateDecoderWrapListener(final FieldPrecedenceModel fieldPrecedenceModel)
+    private static CharSequence generateOnWrappedListener(final FieldPrecedenceModel fieldPrecedenceModel)
     {
         if (null == fieldPrecedenceModel)
         {
@@ -3054,29 +3268,44 @@ public class CppGenerator implements CodeGenerator
         }
 
         final StringBuilder sb = new StringBuilder();
-        sb.append(INDENT).append("void onWrapForDecode(std::uint64_t actingVersion)\n")
-            .append(INDENT).append("{\n")
-            .append(INDENT).append(INDENT).append("switch(actingVersion)\n")
-            .append(INDENT).append(INDENT).append("{\n");
+        sb.append(INDENT).append("void onWrapped(std::uint64_t actingVersion)\n")
+            .append(INDENT).append("{\n");
 
-        fieldPrecedenceModel.forEachWrappedStateByVersion((version, state) ->
-            sb.append(INDENT).append(TWO_INDENT).append("case ").append(version).append(":\n")
-            .append(INDENT).append(THREE_INDENT).append("codecState(")
-            .append(qualifiedStateCase(state)).append(");\n")
-            .append(INDENT).append(THREE_INDENT).append("break;\n"));
+        final MutableBoolean actingVersionCanBeTooLowToBeValid = new MutableBoolean(true);
 
-        sb.append(INDENT).append(TWO_INDENT).append("default:\n")
-            .append(INDENT).append(THREE_INDENT).append("codecState(")
-            .append(qualifiedStateCase(fieldPrecedenceModel.latestVersionWrappedState())).append(");\n")
-            .append(INDENT).append(THREE_INDENT).append("break;\n")
-            .append(INDENT).append(INDENT).append("}\n")
-            .append(INDENT).append("}\n\n");
+        fieldPrecedenceModel.forEachWrappedStateByVersionDesc((version, state) ->
+        {
+            if (version == 0)
+            {
+                actingVersionCanBeTooLowToBeValid.set(false);
+
+                sb.append(INDENT).append("    codecState(")
+                    .append(qualifiedStateCase(state)).append(");\n");
+            }
+            else
+            {
+                sb.append(INDENT).append("    if (actingVersion >= ").append(version).append(")\n")
+                    .append(INDENT).append("    {\n")
+                    .append(INDENT).append("        codecState(")
+                    .append(qualifiedStateCase(state)).append(");\n")
+                    .append(INDENT).append("        return;\n")
+                    .append(INDENT).append("    }\n\n");
+            }
+        });
+
+        if (actingVersionCanBeTooLowToBeValid.get())
+        {
+            sb.append(INDENT)
+                .append("    throw std::runtime_error(\"Unsupported acting version: \" + actingVersion);\n");
+        }
+
+        sb.append(INDENT).append("}\n\n");
 
         return sb;
     }
 
 
-    private CharSequence generateDecoderWrapListenerCall(final FieldPrecedenceModel fieldPrecedenceModel)
+    private CharSequence generateCodecStateTransitionForWrapping(final FieldPrecedenceModel fieldPrecedenceModel)
     {
         if (null == fieldPrecedenceModel)
         {
@@ -3093,10 +3322,37 @@ public class CppGenerator implements CodeGenerator
             return sb;
         }
 
-        return generateAccessOrderListenerCall(fieldPrecedenceModel, TWO_INDENT, "onWrapForDecode", "actingVersion");
+        return generateAccessOrderListenerCall(fieldPrecedenceModel, TWO_INDENT, "onWrapped", "actingVersion");
     }
 
-    private CharSequence generateEncoderWrapListener(final FieldPrecedenceModel fieldPrecedenceModel)
+    private CharSequence generateCheckForNotWrappedState(
+        final String action,
+        final FieldPrecedenceModel fieldPrecedenceModel)
+    {
+        if (null == fieldPrecedenceModel)
+        {
+            return "";
+        }
+
+        final StringBuilder sb = new StringBuilder();
+        sb.append("#if defined(").append(precedenceChecksFlagName).append(")\n")
+            .append(TWO_INDENT)
+                .append("if (codecState() == ")
+                .append(qualifiedStateCase(fieldPrecedenceModel.notWrappedState()))
+                .append(")\n")
+            .append(TWO_INDENT).append("{\n");
+
+        generateAccessOrderException(sb, THREE_INDENT, action);
+
+        sb.append(TWO_INDENT).append("}\n")
+            .append("#endif\n");
+
+        return sb;
+    }
+
+    private CharSequence generateCodecStateTransitionForWrappingLatestVersion(
+        final FieldPrecedenceModel fieldPrecedenceModel
+    )
     {
         if (null == fieldPrecedenceModel)
         {
@@ -3488,64 +3744,6 @@ public class CppGenerator implements CodeGenerator
         return generateLiteral(primitiveType, encoding.applicableNullValue().toString());
     }
 
-    private static CharSequence generateLiteral(final PrimitiveType type, final String value)
-    {
-        String literal = "";
-
-        switch (type)
-        {
-            case CHAR:
-            case UINT8:
-            case UINT16:
-            case INT8:
-            case INT16:
-                literal = "static_cast<" + cppTypeName(type) + ">(" + value + ")";
-                break;
-
-            case UINT32:
-                literal = "UINT32_C(0x" + Integer.toHexString((int)Long.parseLong(value)) + ")";
-                break;
-
-            case INT32:
-                final long intValue = Long.parseLong(value);
-                if (intValue == Integer.MIN_VALUE)
-                {
-                    literal = "INT32_MIN";
-                }
-                else
-                {
-                    literal = "INT32_C(" + value + ")";
-                }
-                break;
-
-            case FLOAT:
-                literal = value.endsWith("NaN") ? "SBE_FLOAT_NAN" : value + "f";
-                break;
-
-            case INT64:
-                final long longValue = Long.parseLong(value);
-                if (longValue == Long.MIN_VALUE)
-                {
-                    literal = "INT64_MIN";
-                }
-                else
-                {
-                    literal = "INT64_C(" + value + ")";
-                }
-                break;
-
-            case UINT64:
-                literal = "UINT64_C(0x" + Long.toHexString(Long.parseLong(value)) + ")";
-                break;
-
-            case DOUBLE:
-                literal = value.endsWith("NaN") ? "SBE_DOUBLE_NAN" : value;
-                break;
-        }
-
-        return literal;
-    }
-
     private void generateDisplay(
         final StringBuilder sb,
         final String name,
@@ -3681,11 +3879,12 @@ public class CppGenerator implements CodeGenerator
             atLeastOne[0] = true;
 
             final String characterEncoding = varData.get(i + 3).encoding().characterEncoding();
-            sb.append(indent).append("builder << R\"(\"").append(varDataToken.name()).append("\": )\";\n");
+            final String propertyName = formatPropertyName(varDataToken.name());
+            sb.append(indent).append("builder << R\"(\"").append(propertyName).append("\": )\";\n");
 
             if (null == characterEncoding)
             {
-                final String skipFunction = "writer.skip" + toUpperFirstChar(varDataToken.name()) + "()";
+                final String skipFunction = "writer.skip" + toUpperFirstChar(propertyName) + "()";
 
                 sb.append(indent).append("builder << '\"' <<\n").append(indent).append(INDENT).append(skipFunction)
                     .append(" << \" bytes of raw data\\\"\";\n");
@@ -3693,7 +3892,7 @@ public class CppGenerator implements CodeGenerator
             else
             {
                 final String getAsStringFunction =
-                    "writer.get" + toUpperFirstChar(varDataToken.name()) + "AsJsonEscapedString().c_str()";
+                    "writer.get" + toUpperFirstChar(propertyName) + "AsJsonEscapedString().c_str()";
 
                 sb.append(indent).append("builder << '\"' <<\n").append(indent).append(INDENT)
                     .append(getAsStringFunction).append(" << '\"';\n\n");
@@ -3727,7 +3926,8 @@ public class CppGenerator implements CodeGenerator
         }
 
         sb.append(indent).append("builder << R\"(\"").append(fieldTokenName).append("\": )\";\n");
-        final String fieldName = "writer." + formatPropertyName(fieldTokenName);
+        final String propertyName = formatPropertyName(fieldTokenName);
+        final String fieldName = "writer." + propertyName;
 
         switch (typeToken.signal())
         {
@@ -3737,7 +3937,7 @@ public class CppGenerator implements CodeGenerator
                     if (typeToken.encoding().primitiveType() == PrimitiveType.CHAR)
                     {
                         final String getAsStringFunction =
-                            "writer.get" + toUpperFirstChar(fieldTokenName) + "AsJsonEscapedString().c_str()";
+                            "writer.get" + toUpperFirstChar(propertyName) + "AsJsonEscapedString().c_str()";
 
                         sb.append(indent).append("builder << '\"' <<\n").append(indent).append(INDENT)
                             .append(getAsStringFunction).append(" << '\"';\n");
@@ -3882,7 +4082,7 @@ public class CppGenerator implements CodeGenerator
         {
             new Formatter(sb).format(
                 "            case %1$s: return \"%1$s\";\n",
-                token.name());
+                formatForCppKeyword(token.name()));
         }
 
         sb.append("            case NULL_VALUE: return \"NULL_VALUE\";\n").append("        }\n\n");

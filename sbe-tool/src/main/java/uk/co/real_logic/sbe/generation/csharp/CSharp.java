@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  * Copyright 2017 MarketFactory Inc
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,19 +21,41 @@ import uk.co.real_logic.sbe.generation.TargetCodeGenerator;
 import uk.co.real_logic.sbe.generation.TargetCodeGeneratorLoader;
 import uk.co.real_logic.sbe.ir.Ir;
 
+import static uk.co.real_logic.sbe.SbeTool.TYPES_PACKAGE_OVERRIDE;
+
 /**
  * {@link CodeGenerator} factory for the CSharp target programming language.
  */
 public class CSharp implements TargetCodeGenerator
 {
+    private static final boolean GENERATE_DTOS = Boolean.getBoolean("sbe.csharp.generate.dtos");
+
     /**
      * {@inheritDoc}
      */
     public CodeGenerator newInstance(final Ir ir, final String outputDir)
     {
-        return new CSharpGenerator(
+        final boolean shouldSupportTypesPackageNames = Boolean.getBoolean(TYPES_PACKAGE_OVERRIDE);
+        final CSharpGenerator flyweightGenerator = new CSharpGenerator(
             ir,
             TargetCodeGeneratorLoader.precedenceChecks(),
+            shouldSupportTypesPackageNames,
             new CSharpNamespaceOutputManager(outputDir, ir.applicableNamespace()));
+
+        if (GENERATE_DTOS)
+        {
+            final CSharpDtoGenerator dtoGenerator = new CSharpDtoGenerator(
+                ir,
+                shouldSupportTypesPackageNames,
+                new CSharpNamespaceOutputManager(outputDir, ir.applicableNamespace()));
+
+            return () ->
+            {
+                flyweightGenerator.generate();
+                dtoGenerator.generate();
+            };
+        }
+
+        return flyweightGenerator;
     }
 }

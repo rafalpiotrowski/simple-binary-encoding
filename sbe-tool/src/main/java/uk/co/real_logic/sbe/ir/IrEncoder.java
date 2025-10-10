@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -192,7 +192,8 @@ public class IrEncoder implements AutoCloseable
             .signal(mapSignal(token.signal()))
             .primitiveType(mapPrimitiveType(type))
             .byteOrder(mapByteOrder(encoding.byteOrder()))
-            .presence(mapPresence(encoding.presence()));
+            .presence(mapPresence(encoding.presence()))
+            .deprecated(token.deprecated());
 
         try
         {
@@ -222,6 +223,9 @@ public class IrEncoder implements AutoCloseable
 
             final byte[] referencedNameBytes = getBytes(token.referencedName(), referencedNameCharacterEncoding());
             tokenEncoder.putReferencedName(referencedNameBytes, 0, referencedNameBytes.length);
+
+            final byte[] packageNameBytes = getBytes(token.packageName(), packageNameCharacterEncoding());
+            tokenEncoder.putPackageName(packageNameBytes, 0, packageNameBytes.length);
         }
         catch (final UnsupportedEncodingException ex)
         {

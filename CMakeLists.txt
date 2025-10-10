@@ -1,5 +1,5 @@
 #
-# Copyright 2013-2024 Real Logic Limited.
+# Copyright 2013-2025 Real Logic Limited.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,15 +14,17 @@
 # limitations under the License.
 #
 
-cmake_minimum_required(VERSION 3.6.1 FATAL_ERROR)
-cmake_policy(VERSION 3.6.1)
+cmake_minimum_required(VERSION 3.30 FATAL_ERROR)
+cmake_policy(VERSION 3.30)
+cmake_policy(SET CMP0003 NEW)
+cmake_policy(SET CMP0135 NEW)
 
 file(STRINGS version.txt SBE_VERSION_TXT LIMIT_COUNT 1 REGEX "^[0-9]+(\\.[0-9]+)+")
 string(REGEX REPLACE "^([0-9]+(\\.[0-9]+)+).*$" "\\1" SBE_VERSION_NUMERIC "${SBE_VERSION_TXT}")
 
 project("sbe" VERSION "${SBE_VERSION_NUMERIC}")
 
-include(ExternalProject)
+include(FetchContent)
 include(CheckLibraryExists)
 
 if (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
@@ -63,42 +65,23 @@ if (NOT DEFINED CMAKE_C_EXTENSIONS)
 endif ()
 
 if (SBE_TESTS)
-    set(SBE_THIRDPARTY_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/thirdparty")
+    FetchContent_Declare(
+            gmock
+            URL ${CMAKE_CURRENT_SOURCE_DIR}/cppbuild/googletest-1.14.0.zip
+            URL_MD5 b4911e882c51cba34bebfb5df500a650)
 
-    ExternalProject_Add(
-        gtest
-        URL ${CMAKE_CURRENT_SOURCE_DIR}/cppbuild/googletest-release-1.12.1.zip
-        URL_MD5 2648d4138129812611cf6b6b4b497a3b
-        PREFIX "${SBE_THIRDPARTY_BINARY_DIR}/gtest"
-        CMAKE_ARGS -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER};-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-        BUILD_BYPRODUCTS "${SBE_THIRDPARTY_BINARY_DIR}/gtest/src/gtest-build/lib/${CMAKE_CFG_INTDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}gmock${CMAKE_STATIC_LIBRARY_SUFFIX};${SBE_THIRDPARTY_BINARY_DIR}/gtest/src/gtest-build/lib/${CMAKE_CFG_INTDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}gmock_main${CMAKE_STATIC_LIBRARY_SUFFIX}"
-        INSTALL_COMMAND ""
-        LOG_CONFIGURE ON
-        LOG_BUILD ON
-    )
-
-    ExternalProject_Get_Property(gtest source_dir)
-    set(GTEST_SOURCE_DIR ${source_dir})
-    ExternalProject_Get_Property(gtest binary_dir)
-    set(GTEST_BINARY_DIR ${binary_dir})
-
-    if (MSVC AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-        set(GTEST_POSTFIX "d")
-    else ()
-        set(GTEST_POSTFIX "")
-    endif ()
-
-    set(GTEST_LIBS
-        ${GTEST_BINARY_DIR}/lib/${CMAKE_CFG_INTDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}gmock${CMAKE_STATIC_LIBRARY_SUFFIX}
-        ${GTEST_BINARY_DIR}/lib/${CMAKE_CFG_INTDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}gtest${CMAKE_STATIC_LIBRARY_SUFFIX}
-        ${GTEST_BINARY_DIR}/lib/${CMAKE_CFG_INTDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}gtest_main${CMAKE_STATIC_LIBRARY_SUFFIX}
-    )
+    FetchContent_MakeAvailable(gmock)
 endif ()
 
 find_package(Threads)
 
 if (UNIX)
     add_compile_options(-Wall -Wpedantic -Wextra -Wno-unused-parameter)
+
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER "21.0")
+        # See gtest: https://github.com/google/googletest/issues/4762
+        add_compile_options(-Wno-error=character-conversion)
+    endif ()
 
     if (C_WARNINGS_AS_ERRORS)
         add_compile_options($<$<COMPILE_LANGUAGE:C>:-Werror>)
@@ -127,6 +110,8 @@ elseif (MSVC)
 
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd /Od /Zi /MP")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT /MP")
+    set(CMAKE_C_FLAGS_DEBUG "/MTd")
+    set(CMAKE_C_FLAGS_RELEASE "/MT")
 
     if (C_WARNINGS_AS_ERRORS)
         add_compile_options($<$<COMPILE_LANGUAGE:C>:/WX>)
@@ -152,8 +137,16 @@ file(GLOB_RECURSE SBE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/sbe-tool/src/main/java/*.java"
 )
 
+if (NOT DEFINED GRADLE_WRAPPER)
+    if (MSVC)
+        set(GRADLE_WRAPPER "gradlew.bat" CACHE INTERNAL "Location of the Gradle wrapper script")
+    else ()
+        set(GRADLE_WRAPPER "./gradlew" CACHE INTERNAL "Location of the Gradle wrapper script")
+    endif ()
+endif ()
+
 add_custom_command(OUTPUT ${SBE_JAR}
-    COMMAND ./gradlew assemble -x javadoc --console=plain
+    COMMAND ${GRADLE_WRAPPER} assemble -x javadoc --console=plain
     DEPENDS ${SBE_SOURCES}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Generating SBE jar"

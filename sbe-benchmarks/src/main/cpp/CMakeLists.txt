@@ -1,5 +1,5 @@
 #
-# Copyright 2013-2024 Real Logic Limited.
+# Copyright 2013-2025 Real Logic Limited.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ set(SBE_MD_SCHEMA ${CODEC_PERF_SCHEMA_DIR}/fix-message-samples.xml)
 add_custom_command(
     OUTPUT ${GENERATED_CODECS}
     DEPENDS ${SBE_CAR_SCHEMA} ${SBE_MD_SCHEMA} sbe-jar ${SBE_JAR}
-    COMMAND ${Java_JAVA_EXECUTABLE} -Dsbe.output.dir=${CXX_CODEC_TARGET_DIR} -Dsbe.target.language="cpp" -jar ${SBE_JAR} ${SBE_CAR_SCHEMA} ${SBE_MD_SCHEMA}
+    COMMAND ${Java_JAVA_EXECUTABLE} --add-opens java.base/jdk.internal.misc=ALL-UNNAMED -Dsbe.output.dir=${CXX_CODEC_TARGET_DIR} -Dsbe.target.language="cpp" -jar ${SBE_JAR} ${SBE_CAR_SCHEMA} ${SBE_MD_SCHEMA}
 )
 add_custom_target(perf_codecs DEPENDS ${GENERATED_CODECS})
 

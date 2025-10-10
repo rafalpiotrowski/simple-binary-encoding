@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,7 +77,10 @@ public:
         Signal signal,
         std::string name,
         std::string description,
-        Encoding encoding) :
+        Encoding encoding,
+        std::string referencedName = "",
+        std::string packageName = ""
+        ) :
         m_offset(offset),
         m_fieldId(fieldId),
         m_version(version),
@@ -86,7 +89,9 @@ public:
         m_signal(signal),
         m_name(std::move(name)),
         m_description(std::move(description)),
-        m_encoding(std::move(encoding))
+        m_encoding(std::move(encoding)),
+        m_referencedName(std::move(referencedName)),
+        m_packageName(std::move(packageName))
     {
     }
 
@@ -103,6 +108,16 @@ public:
     inline const std::string &description() const
     {
         return m_description;
+    }
+
+    inline const std::string &referencedName() const
+    {
+        return m_referencedName;
+    }
+
+    inline const std::string &packageName() const
+    {
+        return m_packageName;
     }
 
     inline std::int32_t fieldId() const
@@ -150,6 +165,8 @@ private:
     const std::string m_name;
     const std::string m_description;
     const Encoding m_encoding;
+    const std::string m_referencedName;
+    const std::string m_packageName;
 };
 
 }}

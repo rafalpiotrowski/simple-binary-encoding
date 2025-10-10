@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
+                   package="dto_test"
+                   id="1"
+                   version="6"
+                   description="Example schema"
+                   byteOrder="littleEndian">
+    <types>
+        <composite name="messageHeader" description="Message identifiers and length of message root">
+            <type name="blockLength" primitiveType="uint16"/>
+            <type name="templateId" primitiveType="uint16"/>
+            <type name="schemaId" primitiveType="uint16"/>
+            <type name="version" primitiveType="uint16"/>
+        </composite>
+        <composite name="groupSizeEncoding" description="Repeating group dimensions">
+            <type name="blockLength" primitiveType="uint16"/>
+            <type name="numInGroup" primitiveType="uint16"/>
+        </composite>
+        <composite name="varStringEncoding">
+            <type name="length" primitiveType="uint32" maxValue="1073741824"/>
+            <type name="varData" primitiveType="uint8" length="0" characterEncoding="UTF-8"/>
+        </composite>
+        <composite name="varAsciiStringEncoding">
+            <type name="length" primitiveType="uint32" maxValue="1073741824"/>
+            <type name="varData" primitiveType="uint8" length="0" characterEncoding="ASCII"/>
+        </composite>
+        <composite name="varDataEncoding">
+            <type name="length" primitiveType="uint32" maxValue="1073741824"/>
+            <type name="varData" primitiveType="uint8" length="0"/>
+        </composite>
+    </types>
+    <types>
+        <type name="ModelYear" primitiveType="uint16"/>
+        <type name="VehicleCode" primitiveType="char" length="6" characterEncoding="ASCII"/>
+        <type name="Ron" primitiveType="uint8" minValue="90" maxValue="110"/>
+        <type name="someNumbers" primitiveType="uint32" length="5"/>
+        <type name="Percentage" primitiveType="int8" minValue="0" maxValue="100"/>
+        <type name="TwoBytes" primitiveType="int8" length="2" sinceVersion="2"/>
+        <type name="CharArray9" primitiveType="char" length="9" />
+        <type name="intArray" primitiveType="int32" length="5" sinceVersion="3"/>
+        <composite name="Booster">
+            <enum name="BoostType" encodingType="char">
+                <validValue name="TURBO">T</validValue>
+                <validValue name="SUPERCHARGER">S</validValue>
+                <validValue name="NITROUS">N</validValue>
+                <validValue name="KERS">K</validValue>
+            </enum>
+            <type name="horsePower" primitiveType="uint8"/>
+        </composite>
+        <composite name="Engine">
+            <type name="capacity" primitiveType="uint16"/>
+            <type name="numCylinders" primitiveType="uint8"/>
+            <type name="maxRpm" primitiveType="uint16" presence="constant">9000</type>
+            <type name="manufacturerCode" primitiveType="char" length="3"/>
+            <type name="fuel" primitiveType="char" presence="constant">Petrol</type>
+            <ref name="efficiency" type="Percentage"/>
+            <ref name="boosterEnabled" type="BooleanType"/>
+            <ref name="booster" type="Booster"/>
+        </composite>
+        <enum name="BooleanType" encodingType="uint8">
+            <validValue name="F">0</validValue>
+            <validValue name="T">1</validValue>
+        </enum>
+        <enum name="Model" encodingType="char">
+            <validValue name="A">A</validValue>
+            <validValue name="B">B</validValue>
+            <validValue name="C">C</validValue>
+        </enum>
+        <enum name="Break" encodingType="uint8">
+            <validValue name="false">0</validValue>
+            <validValue name="true">1</validValue>
+            <validValue name="null">222</validValue>
+            <validValue name="return">254</validValue>
+        </enum>
+        <set name="OptionalExtras" encodingType="uint8">
+            <choice name="sunRoof">0</choice>
+            <choice name="sportsPack">1</choice>
+            <choice name="cruiseControl">2</choice>
+        </set>
+        <composite name="BytePair" sinceVersion="6">
+            <type name="one" primitiveType="int8" presence="optional"/>
+            <type name="two" primitiveType="int8"/>
+        </composite>
+        <composite name="ArrayPair" sinceVersion="4">
+            <ref name="char" type="CharArray9"/>
+            <ref name="false" type="intArray"/>
+        </composite>
+    </types>
+
+    <sbe:message name="OlderMessage" id="1">
+        <field name="id" id="1" type="uint64"/>
+    </sbe:message>
+
+    <sbe:message name="ExtendedCar" id="2" description="Description of a basic Car" sinceVersion="1">
+        <field name="serialNumber" id="1" type="uint64"/>
+        <field name="modelYear" id="2" type="ModelYear"/>
+        <field name="available" id="3" type="BooleanType"/>
+        <field name="code" id="4" type="Model"/>
+        <field name="vehicleCode" id="6" type="VehicleCode"/>
+        <field name="extras" id="7" type="OptionalExtras"/>
+        <field name="discountedModel" id="8" type="Model" presence="constant" valueRef="Model.C"/>
+        <field name="engine" id="9" type="Engine"/>
+        <field name="added1" id="21" type="int32" sinceVersion="2" presence="optional"/>
+        <field name="added4" id="24" type="BooleanType" sinceVersion="4" presence="optional"/>
+        <field name="added6" id="26" type="BytePair" sinceVersion="6" presence="optional"/>
+        <field name="added7" id="27" type="OptionalExtras" sinceVersion="6" presence="optional"/>
+        <group name="fuelFigures" id="10" dimensionType="groupSizeEncoding">
+            <field name="speed" id="11" type="uint16"/>
+            <field name="mpg" id="12" type="float"/>
+            <field name="added2" id="22" type="TwoBytes" sinceVersion="2" presence="optional"/>
+            <field name="added3" id="23" type="int8" sinceVersion="3" presence="optional"/>
+            <data name="usageDescription" id="200" type="varStringEncoding"/>
+        </group>
+        <group name="performanceFigures" id="13" dimensionType="groupSizeEncoding">
+            <field name="octaneRating" id="14" type="Ron"/>
+            <group name="acceleration" id="15" dimensionType="groupSizeEncoding">
+                <field name="mph" id="16" type="uint16"/>
+                <field name="seconds" id="17" type="float"/>
+            </group>
+        </group>
+        <data name="manufacturer" id="18" type="varStringEncoding"/>
+        <data name="model" id="19" type="varStringEncoding"/>
+        <data name="activationCode" id="20" type="varDataEncoding"/>
+        <data name="added5" id="25" type="varStringEncoding" sinceVersion="5"/>
+    </sbe:message>
+
+    <sbe:message name="Keywords" id="3">
+        <field name="Abstract"      id="1"  type="int8"/>
+        <field name="assert"        id="2"  type="int8"/>
+        <field name="boolean"       id="3"  type="int8"/>
+        <field name="break"         id="4"  type="int8"/>
+        <field name="byte"          id="5"  type="int8"/>
+        <field name="case"          id="6"  type="int8"/>
+        <field name="catch"         id="7"  type="int8"/>
+        <field name="char"          id="8"  type="int8"/>
+        <field name="class"         id="9"  type="int8"/>
+        <field name="const"         id="10" type="int8"/>
+        <field name="continue"      id="11" type="Model"/>
+        <field name="default"       id="12" type="int8"/>
+        <field name="do"            id="13" type="int8"/>
+        <field name="double"        id="14" type="int8"/>
+        <field name="else"          id="15" type="int8"/>
+        <field name="enum"          id="16" type="int8"/>
+        <field name="extends"       id="17" type="int8"/>
+        <field name="final"         id="18" type="int8"/>
+        <field name="finally"       id="19" type="int8"/>
+        <field name="float"         id="20" type="int8"/>
+        <field name="for"           id="21" type="int8"/>
+        <field name="goto"          id="22" type="int8"/>
+        <field name="if"            id="23" type="int8"/>
+        <field name="implements"    id="24" type="int8"/>
+        <field name="Import"        id="25" type="CharArray9"/>
+        <field name="instanceof"    id="26" type="int8"/>
+        <field name="int"           id="27" type="int8"/>
+        <field name="interface"     id="28" type="int8"/>
+        <field name="long"          id="29" type="int8"/>
+        <field name="native"        id="30" type="int8"/>
+        <field name="new"           id="31" type="int8"/>
+        <field name="private"       id="33" type="int8"/>
+        <field name="protected"     id="34" type="int8"/>
+        <field name="public"        id="35" type="int8"/>
+        <field name="return"        id="36" type="int8"/>
+        <field name="short"         id="37" type="int8"/>
+        <field name="static"        id="38" type="int8"/>
+        <field name="strictfp"      id="39" type="CharArray9"/>
+        <field name="super"         id="40" type="int8"/>
+        <field name="switch"        id="41" type="int8"/>
+        <field name="synchronized"  id="42" type="int8"/>
+        <field name="this"          id="43" type="int8"/>
+        <field name="throw"         id="44" type="int8"/>
+        <field name="throws"        id="45" type="int8"/>
+        <field name="transient"     id="46" type="int8"/>
+        <field name="try"           id="47" type="int8"/>
+        <field name="void"          id="48" type="intArray"/>
+        <field name="volatile"      id="49" type="int8"/>
+        <field name="while"         id="50" type="int8"/>
+        <field name="true"          id="52" type="ArrayPair"/>
+        <field name="false"         id="53" type="int8"/>
+        <field name="_"             id="54" type="Break"/>
+        <field name="falsE"         id="55" type="int8"/>
+        <field name="func"          id="56" type="uint16"/>
+        <field name="string"        id="57" type="int64"/>
+        <field name="length"        id="58" type="int64"/>
+        <field name="size"          id="59" type="int64"/>
+        <field name="nil"           id="60" type="int64"/>
+        <field name="panic"         id="61" type="int64"/>
+        <field name="uint"          id="62" type="int64"/>
+        <field name="uint8"         id="63" type="int64"/>
+        <field name="uint16"        id="64" type="int64"/>
+        <field name="uint32"        id="65" type="int64"/>
+        <field name="uint64"        id="66" type="int64"/>
+        <field name="delete"        id="67" type="int64"/>
+        <field name="iota"          id="68" type="int64"/>
+        <field name="close"         id="69" type="int64"/>
+        <field name="defer"         id="70" type="int64"/>
+        <field name="struct"        id="71" type="int64"/>
+        <field name="Make"          id="72" type="int64"/>
+        <field name="type"          id="73" type="uint8"/>
+        <group name="data"          id="90" dimensionType="groupSizeEncoding">
+            <field name="this"      id="91" type="Ron"/>
+            <group name="super"     id="92" dimensionType="groupSizeEncoding">
+                <field name="mph"   id="93" type="uint16"/>
+                <field name="try"   id="94" type="float"/>
+                <field name="defer" id="95" type="float"/>
+                <field name="new"   id="96" type="CharArray9"/>
+                <field name="true"  id="97" type="intArray"/>
+                <data name="import" id="98" type="varAsciiStringEncoding"/>
+            </group>
+        </group>
+        <data name="go"             id="100" type="varStringEncoding"/>
+        <data name="package"        id="101" type="varStringEncoding"/>
+        <data name="var"            id="102" type="varAsciiStringEncoding"/>
+    </sbe:message>
+</sbe:messageSchema>

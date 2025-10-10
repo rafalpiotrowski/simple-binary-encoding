@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2024 Real Logic Limited.
+ * Copyright 2013-2025 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,19 +15,17 @@
  */
 package uk.co.real_logic.sbe;
 
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * Various validation utilities used across parser, IR, and generator
+ * Various validation utilities used across parser, IR, and generator.
  */
 public class ValidationUtil
 {
     private static final Pattern PATTERN = Pattern.compile("\\.");
 
-    private static final Set<String> C_KEYWORDS = new HashSet<>(Arrays.asList(
+    private static final Set<String> C_KEYWORDS = Set.of(
         "auto", "_Alignas", "_Alignof", "_Atomic", "bool",
         "_Bool", "break", "case", "_Complex",
         "char", "const", "continue", "default",
@@ -36,7 +34,7 @@ public class ValidationUtil
         "int", "long", "_Noreturn", "register", "restrict", "return", "short",
         "signed", "sizeof", "static", "_Static_assert",
         "struct", "switch", "_Thread_local", "true", "typedef", "union",
-        "unsigned", "void", "volatile", "wchar_t", "while"));
+        "unsigned", "void", "volatile", "wchar_t", "while");
 
     /**
      * Check value for validity of usage as a C identifier. A programmatic variable
@@ -114,7 +112,7 @@ public class ValidationUtil
         return Character.isLetterOrDigit(c) || c == '_';
     }
 
-    private static final Set<String> CPP_KEYWORDS = new HashSet<>(Arrays.asList(
+    private static final Set<String> CPP_KEYWORDS = Set.of(
         "alignas", "and", "and_eq", "asm", "auto",
         "bitand", "bitor", "bool", "break", "case",
         "catch", "char", "class", "compl", "const",
@@ -134,7 +132,7 @@ public class ValidationUtil
         // since C++11
         "alignof", "constexpr", "decltype", "nullptr", "static_assert", "thread_local",
         // since C++11 have special meaning, so avoid
-        "final"));
+        "final");
 
     /**
      * Check value for validity of usage as a C++ identifier. A programmatic variable
@@ -212,7 +210,7 @@ public class ValidationUtil
         return Character.isLetterOrDigit(c) || c == '_';
     }
 
-    private static final Set<String> JAVA_KEYWORDS = new HashSet<>(Arrays.asList(
+    private static final Set<String> JAVA_KEYWORDS = Set.of(
         "abstract", "assert", "boolean", "break", "byte",
         "case", "catch", "char", "class", "const",
         "continue", "default", "do", "double", "else",
@@ -223,14 +221,14 @@ public class ValidationUtil
         "return", "short", "static", "strictfp", "super",
         "switch", "synchronized", "this", "throw", "throws",
         "transient", "try", "void", "volatile", "while",
-        "null", "true", "false", "_"));
+        "null", "true", "false", "_");
 
     /**
      * Check string for validity of usage as a Java identifier. Avoiding keywords.
      * <p>
      * <a href="http://docs.oracle.com/javase/specs/jls/se8/html/jls-3.html#jls-3.9">Java JLS</a>
      *
-     * @param value to check
+     * @param value to check.
      * @return true for validity as a Java name. false if not.
      */
     public static boolean isSbeJavaName(final String value)
@@ -292,12 +290,12 @@ public class ValidationUtil
     }
 
     /* https://golang.org/ref/spec#Keywords */
-    private static final Set<String> GOLANG_KEYWORDS = new HashSet<>(Arrays.asList(
+    private static final Set<String> GOLANG_KEYWORDS = Set.of(
         "break", "default", "func", "interface", "select",
         "case", "defer", "go", "map", "struct",
         "chan", "else", "goto", "package", "switch",
         "const", "fallthrough", "if", "range", "type",
-        "continue", "for", "import", "return", "var",
+        "continue", "for", "import", "return", "var", "_",
 
         /* https://golang.org/ref/spec#Predeclared_identifiers */
         /* types */
@@ -310,7 +308,7 @@ public class ValidationUtil
         "nil",
         /* functions */
         "append", "cap", "close", "complex", "copy", "delete", "imag", "len",
-        "make", "new", "panic", "print", "println", "real", "recover"));
+        "make", "new", "panic", "print", "println", "real", "recover", "String");
 
     /**
      * "Check" value for validity of usage as a golang identifier. From:
@@ -393,12 +391,13 @@ public class ValidationUtil
     }
 
     /**
+     * C# keywords.
      * <a href="https://docs.microsoft.com/en-gb/dotnet/articles/csharp/language-reference/keywords/index">
      *     C# keywords</a>
      * Note this does not include the contextual keywords
      * Note "virtual" is no longer but was in early versions of C#
      */
-    private static final Set<String> CSHARP_KEYWORDS = new HashSet<>(Arrays.asList(
+    private static final Set<String> CSHARP_KEYWORDS = Set.of(
         "abstract", "as", "base", "bool", "break",
         "byte", "case", "catch", "char", "checked",
         "class", "const", "continue", "decimal", "default",
@@ -413,8 +412,8 @@ public class ValidationUtil
         "short", "sizeof", "stackalloc", "static", "string",
         "struct", "switch", "this", "throw", "true",
         "try", "typeof", "uint", "ulong", "unchecked",
-        "unsafe", "ushort", "using", "using static", "virtual",
-        "void", "volatile", "while"));
+        "unsafe", "ushort", "using", "virtual",
+        "void", "volatile", "while");
 
     /**
      * "Check" value for validity of usage as a csharp identifier.
