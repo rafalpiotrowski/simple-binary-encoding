@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<messageSchema package="SBE tests"
+               id="2"
+               semanticVersion="5.2"
+               description="Unit Test"
+               headerType="foo"
+               byteOrder="littleEndian">
+    <types>
+        <composite name="foo" description="Arbitrary named message header type">
+            <type name="blockLength" primitiveType="uint16"/>
+            <type name="templateId" primitiveType="uint16"/>
+            <type name="schemaId" primitiveType="uint16"/>
+            <type name="version" primitiveType="uint16"/>
+        </composite>
+    </types>
+    <message name="AlternativeReality" id="1" description="AlternativeReality">
+        <field name="x" id="1" type="int32" />
+    </message>
+</messageSchema>
