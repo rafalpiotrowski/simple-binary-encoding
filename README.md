@@ -9,7 +9,7 @@ Simple Binary Encoding (SBE)
 
 [SBE](https://github.com/FIXTradingCommunity/fix-simple-binary-encoding) is an OSI layer 6 presentation for 
 encoding and decoding binary application messages for low-latency financial applications. This repository contains 
-the reference implementations in Java, C++, Golang, C#, and Rust.
+the reference implementations in Java, C, C++, C#, Golang and Rust.
 
 More details on the design and usage of SBE can be found on the [Wiki](https://github.com/aeron-io/simple-binary-encoding/wiki).
 
@@ -20,8 +20,7 @@ For the latest version information and changes see the [Change Log](https://gith
 
 The Java and C++ SBE implementations work very efficiently with the [Aeron](https://github.com/aeron-io/aeron)
 messaging system for low-latency and high-throughput communications. The Java SBE implementation has a dependency on
-[Agrona](https://github.com/aeron-io/agrona) for its buffer implementations. Commercial support is available from
-[sales@real-logic.co.uk](mailto:sales@real-logic.co.uk?subject=SBE).
+[Agrona](https://github.com/aeron-io/agrona) for its buffer implementations.
 
 Binaries
 --------

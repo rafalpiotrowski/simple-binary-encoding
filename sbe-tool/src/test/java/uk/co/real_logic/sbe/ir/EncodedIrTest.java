@@ -17,6 +17,7 @@ package uk.co.real_logic.sbe.ir;
 
 import org.junit.jupiter.api.Test;
 import uk.co.real_logic.sbe.Tests;
+import uk.co.real_logic.sbe.xml.CompositeType;
 import uk.co.real_logic.sbe.xml.IrGenerator;
 import uk.co.real_logic.sbe.xml.MessageSchema;
 import uk.co.real_logic.sbe.xml.ParserOptions;
@@ -28,6 +29,8 @@ import java.util.List;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.core.Is.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static uk.co.real_logic.sbe.xml.XmlSchemaParser.parse;
 
 class EncodedIrTest
@@ -173,6 +176,27 @@ class EncodedIrTest
     void shouldPreservePackageNames() throws Exception
     {
         testDecodeTypes("explicit-package-test-schema.xml");
+    }
+
+    @Test
+    void shouldUseCustomHeaderType() throws Exception
+    {
+        try (InputStream in = Tests.getLocalResource("custom-header-type.xml"))
+        {
+            final MessageSchema schema = parse(in, ParserOptions.DEFAULT);
+            final CompositeType messageHeader = schema.messageHeader();
+            assertNotNull(messageHeader);
+            assertEquals("foo", messageHeader.name());
+
+            final IrGenerator irg = new IrGenerator();
+            final Ir ir = irg.generate(schema);
+            final ByteBuffer buffer = ByteBuffer.allocate(CAPACITY);
+            try (IrEncoder irEncoder = new IrEncoder(buffer, ir))
+            {
+                irEncoder.encode();
+                assertThat(buffer.position(), greaterThan(0));
+            }
+        }
     }
 
     private void testDecodeTypes(final String name1) throws Exception

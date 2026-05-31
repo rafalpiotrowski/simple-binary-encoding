@@ -72,7 +72,8 @@ class SubGroup implements RustGenerator.ParentDef
         indent(sb, level, "initial_limit: usize,\n");
         indent(sb, level - 1, "}\n\n");
 
-        RustGenerator.appendImplEncoderForComposite(sb, level - 1, name);
+        final RustGenerator.NullifyTargets nullifyTargets = RustGenerator.getNullifyTargets(fields);
+        RustGenerator.appendImplEncoderForComposite(sb, level - 1, name, nullifyTargets);
 
         // define impl...
         indent(sb, level - 1, "impl<'a, P> %s<P> where P: Encoder<'a> + Default {\n", name);
@@ -103,7 +104,7 @@ class SubGroup implements RustGenerator.ParentDef
 
         // block_length function
         indent(sb, level, "#[inline]\n");
-        indent(sb, level, "pub fn block_length() -> %s {\n", rustTypeName(blockLengthPrimitiveType));
+        indent(sb, level, "pub const fn block_length() -> %s {\n", rustTypeName(blockLengthPrimitiveType));
         indent(sb, level + 1, "%d\n", this.groupToken.encodedLength());
         indent(sb, level, "}\n\n");
 
