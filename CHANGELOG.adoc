@@ -1,10 +1,29 @@
 = Changelog
 
-== 1.38.0 (unreleased)
+== 1.39.0 (unreleased)
 
+* Upgrade to `Gradle` 9.5.1.
+* Upgrade to `JUnit` 6.1.0.
+
+== 1.38.1 (2026-04-28)
+
+* Upgrade to `Agrona` 2.4.1.
+* Upgrade to `Versions` 0.54.0.
+
+== 1.38.0 (2026-04-22)
+
+* **[Rust]** Recursively call nullify_optional_fields on composites
+* **[Rust]** Generate setters for optional enum fields too.
 * **[Rust]** Generated encoders now produce fluent interface. (https://github.com/aeron-io/simple-binary-encoding/pull/1097[#1097])
 * **[Rust]** Updated some function to `const`. (https://github.com/aeron-io/simple-binary-encoding/pull/1098[#1098])
 * **[Rust]** Updated generator to correctly limit length of var data written. (https://github.com/aeron-io/simple-binary-encoding/pull/1096[#1096])
+* **[C++]** Protect against a segfault when dealing with empty `std::span` and `std::view`.
+* **[C++]** mark a generated function SBE_CONSTEXPR (#1055) (#1083)
+* Upgrade to `CMake` 4.3.0.
+* Upgrade to `Shadow` 9.4.1.
+* Upgrade to `Gradle` 9.4.1.
+* Upgrade to `Shadow` 9.4.0.
+* Upgrade to `Mockito` 5.23.0.
 
 == 1.37.1 (2026-01-13)
 * **[Java]** Ensure Java code generation for precedence checks always produces the same code without re-orderings.

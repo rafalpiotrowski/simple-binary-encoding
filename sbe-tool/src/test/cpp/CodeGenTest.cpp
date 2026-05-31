@@ -1101,6 +1101,21 @@ TEST_F(CodeGenTest, shouldBeAbleToUseStdStringViewMethods)
 }
 #endif
 
+#ifdef SBE_USE_STRING_VIEW
+TEST_F(CodeGenTest, shouldHandleEmptyStringView)
+{
+    char buffer[BUFFER_LEN] = {};
+
+    std::uint64_t baseOffset = MessageHeader::encodedLength();
+    Car car;
+    car.wrapForEncode(buffer, baseOffset, sizeof(buffer));
+    car.putVehicleCode(std::string_view{});
+
+    car.sbeRewind();
+    EXPECT_EQ(car.getVehicleCodeAsStringView(), "");
+}
+#endif
+
 #ifdef SBE_USE_SPAN
 TEST_F(CodeGenTest, shouldBeAbleToUseStdSpanViewMethods)
 {
@@ -1133,17 +1148,53 @@ TEST_F(CodeGenTest, shouldBeAbleToUseStdSpanViewMethods)
 #endif
 
 #ifdef SBE_USE_SPAN
-TEST_F(CodeGenTest, shouldBeAbleToResolveStringLiterals)
+TEST_F(CodeGenTest, shouldBeAbleToUseStringLiteralsWhenSpanIsEnabled)
 {
     char buffer[BUFFER_LEN] = {};
 
     std::uint64_t baseOffset = MessageHeader::encodedLength();
     Car car;
     car.wrapForEncode(buffer, baseOffset, sizeof(buffer));
-    car.putVehicleCode("ABCDE");
+    car.putVehicleCode("ABC");
+
+    car.sbeRewind();
+    EXPECT_EQ(car.getVehicleCodeAsStringView(), "ABC");
+    auto res = car.getVehicleCodeAsSpan();
+    EXPECT_EQ(6, res.size());
+}
+#endif
+
+#ifdef SBE_USE_SPAN
+TEST_F(CodeGenTest, shouldBeAbleToUseSpanToEncodeCharData)
+{
+    char buffer[BUFFER_LEN] = {};
+
+    std::uint64_t baseOffset = MessageHeader::encodedLength();
+    Car car;
+    car.wrapForEncode(buffer, baseOffset, sizeof(buffer));
+    car.putVehicleCode(std::span("ABCDE"));
 
     car.sbeRewind();
     EXPECT_EQ(car.getVehicleCodeAsStringView(), "ABCDE");
+    auto res = car.getVehicleCodeAsSpan();
+    EXPECT_EQ(6, res.size());
+}
+#endif
+
+#ifdef SBE_USE_SPAN
+TEST_F(CodeGenTest, shouldBeAbleToHandleEmptySpan)
+{
+    char buffer[BUFFER_LEN] = {};
+
+    std::uint64_t baseOffset = MessageHeader::encodedLength();
+    Car car;
+    car.wrapForEncode(buffer, baseOffset, sizeof(buffer));
+    car.putVehicleCode(std::span<const char, 0>{});
+
+    car.sbeRewind();
+    EXPECT_EQ(car.getVehicleCodeAsStringView(), "");
+    auto res = car.getVehicleCodeAsSpan();
+    EXPECT_EQ(6, res.size());
 }
 #endif
 
