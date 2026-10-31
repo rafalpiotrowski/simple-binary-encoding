@@ -146,6 +146,7 @@ public class GolangGenerator implements CodeGenerator
     /**
      * {@inheritDoc}
      */
+    @Override
     public void generate() throws IOException
     {
         // Add the Marshalling from the big or little endian
@@ -229,8 +230,7 @@ public class GolangGenerator implements CodeGenerator
         if (gap > 0)
         {
             imports.peek().add("io");
-            imports.peek().add("io/ioutil");
-            return String.format("%1$s\tio.CopyN(ioutil.Discard, _r, %2$d)\n", indent, gap);
+            return String.format("%1$s\tio.CopyN(io.Discard, _r, %2$d)\n", indent, gap);
         }
 
         return "";
@@ -476,10 +476,26 @@ public class GolangGenerator implements CodeGenerator
         imports.peek().add("fmt");
         if (token.arrayLength() > 1)
         {
+            // A character array holding a value shorter than its declared length is NUL padded by the Java,
+            // C++ and Go flyweight codecs, and NullValue for CHAR (0) sits below MinValue (0x20), so the pad
+            // bytes have to be accepted here too. Space padded values are unaffected either way because the
+            // pad character is itself within Min->Max.
+            // Structured this way for go fmt sanity on both cases.
+            final String elementCheck;
+            if (token.encoding().primitiveType() == PrimitiveType.CHAR)
+            {
+                elementCheck = "\t\t\tif %1$s[idx] != %1$sNullValue() && " +
+                    "(%1$s[idx] < %1$sMinValue() || %1$s[idx] > %1$sMaxValue()) {\n";
+            }
+            else
+            {
+                elementCheck = "\t\t\tif %1$s[idx] < %1$sMinValue() || %1$s[idx] > %1$sMaxValue() {\n";
+            }
+
             sb.append(String.format(
                 "\tif %1$sInActingVersion(actingVersion) {\n" +
                 "\t\tfor idx := 0; idx < %2$s; idx++ {\n" +
-                "\t\t\tif %1$s[idx] < %1$sMinValue() || %1$s[idx] > %1$sMaxValue() {\n" +
+                elementCheck +
                 "\t\t\t\treturn fmt.Errorf(\"Range check failed on %1$s[%%d] " +
                 "(%%v < %%v > %%v)\", idx, %1$sMinValue(), %1$s[idx], %1$sMaxValue())\n" +
                 "\t\t\t}\n" +
@@ -624,10 +640,9 @@ public class GolangGenerator implements CodeGenerator
         final char varName)
     {
         imports.peek().add("io");
-        imports.peek().add("io/ioutil");
         sb.append(String.format(
             "\tif actingVersion > %1$s.SbeSchemaVersion() && blockLength > %1$s.SbeBlockLength() {\n" +
-            "\t\tio.CopyN(ioutil.Discard, _r, int64(blockLength-%1$s.SbeBlockLength()))\n" +
+            "\t\tio.CopyN(io.Discard, _r, int64(blockLength-%1$s.SbeBlockLength()))\n" +
             "\t}\n",
             varName));
     }
@@ -1276,8 +1291,8 @@ public class GolangGenerator implements CodeGenerator
 
         // Write the group itself
         encode.append(String.format(
-            "\tfor i := range %1$s.%2$s {\n" +
-            "\t\tif err := %1$s.%2$s[i].Encode(_m, _w); err != nil {\n" +
+            "\tfor idx := range %1$s.%2$s {\n" +
+            "\t\tif err := %1$s.%2$s[idx].Encode(_m, _w); err != nil {\n" +
             "\t\t\treturn err\n" +
             "\t\t}\n",
             varName,
@@ -1317,8 +1332,8 @@ public class GolangGenerator implements CodeGenerator
             "\t\t\t%1$s.%2$s = make([]%3$s%2$s, %2$sNumInGroup)\n" +
             "\t\t}\n" +
             "\t\t%1$c.%2$s = %1$c.%2$s[:%2$sNumInGroup]\n" +
-            "\t\tfor i := range %1$s.%2$s {\n" +
-            "\t\t\tif err := %1$s.%2$s[i].Decode(_m, _r, actingVersion, uint(%4$sBlockLength)); err != nil {\n" +
+            "\t\tfor idx := range %1$s.%2$s {\n" +
+            "\t\t\tif err := %1$s.%2$s[idx].Decode(_m, _r, actingVersion, uint(%4$sBlockLength)); err != nil {\n" +
             "\t\t\t\treturn err\n" +
             "\t\t\t}\n" +
             "\t\t}\n",
@@ -1329,8 +1344,8 @@ public class GolangGenerator implements CodeGenerator
 
         // Range check the group itself
         rc.append(String.format(
-            "\tfor i := range %1$s.%2$s {\n" +
-            "\t\tif err := %1$s.%2$s[i].RangeCheck(actingVersion, schemaVersion); err != nil {\n" +
+            "\tfor idx := range %1$s.%2$s {\n" +
+            "\t\tif err := %1$s.%2$s[idx].RangeCheck(actingVersion, schemaVersion); err != nil {\n" +
             "\t\t\treturn err\n" +
             "\t\t}\n" +
             "\t}\n",
@@ -2373,11 +2388,37 @@ public class GolangGenerator implements CodeGenerator
                 break;
 
             case FLOAT:
-                literal = "float32(" + (value.endsWith("NaN") ? "math.NaN()" : value) + ")";
+                if (value.endsWith("NaN"))
+                {
+                    imports.peek().add("math");
+                    literal = "float32(math.NaN())";
+                }
+                else if (value.endsWith("Infinity"))
+                {
+                    imports.peek().add("math");
+                    literal = "float32(math.Inf(" + (value.startsWith("-") ? "-1" : "1") + "))";
+                }
+                else
+                {
+                    literal = "float32(" + value + ")";
+                }
                 break;
 
             case DOUBLE:
-                literal = value.endsWith("NaN") ? "math.NaN()" : value;
+                if (value.endsWith("NaN"))
+                {
+                    imports.peek().add("math");
+                    literal = "math.NaN()";
+                }
+                else if (value.endsWith("Infinity"))
+                {
+                    imports.peek().add("math");
+                    literal = "math.Inf(" + (value.startsWith("-") ? "-1" : "1") + ")";
+                }
+                else
+                {
+                    literal = value;
+                }
                 break;
         }
 
