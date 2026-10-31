@@ -258,6 +258,68 @@ class JavaGeneratorTest
     }
 
     @Test
+    void shouldGenerateFloatingPointInfinityLiterals() throws Exception
+    {
+        try (InputStream in = Tests.getLocalResource("floating-point-infinity-schema.xml"))
+        {
+            final ParserOptions options = ParserOptions.builder().stopOnError(true).build();
+            final MessageSchema schema = parse(in, options);
+            ir = new IrGenerator().generate(schema);
+
+            outputManager.clear();
+            outputManager.setPackageName(ir.applicableNamespace());
+
+            generator().generate();
+            new JavaDtoGenerator(ir, false, outputManager).generate();
+
+            final String source = outputManager.getSources().values().stream()
+                .map(CharSequence::toString)
+                .collect(java.util.stream.Collectors.joining("\n"));
+
+            assertThat(source, allOf(
+                containsString("Float.POSITIVE_INFINITY"),
+                containsString("Double.NEGATIVE_INFINITY")));
+            assertNotNull(CompilerUtil.compileInMemory(
+                ir.applicableNamespace() + ".InfinityValuesDecoder", outputManager.getSources()));
+            assertNotNull(CompilerUtil.compileInMemory(
+                ir.applicableNamespace() + ".InfinityValuesDto", outputManager.getSources()));
+        }
+    }
+
+    @Test
+    void shouldNotDecodeSetChoiceAddedAfterActingVersion() throws Exception
+    {
+        try (InputStream in = Tests.getLocalResource("issue1035.xml"))
+        {
+            final ParserOptions options = ParserOptions.builder().stopOnError(true).build();
+            final MessageSchema schema = parse(in, options);
+            ir = new IrGenerator().generate(schema);
+
+            outputManager.clear();
+            outputManager.setPackageName(ir.applicableNamespace());
+
+            generator().generate();
+
+            final Class<?> decoderClass = compile(ir.applicableNamespace() + ".Issue1035Decoder");
+            final Object decoder = decoderClass.getConstructor().newInstance();
+            final Method wrapMethod = decoderClass.getMethod(
+                "wrap", READ_ONLY_BUFFER_CLASS, int.class, int.class, int.class);
+            final UnsafeBuffer buffer = new UnsafeBuffer(new byte[1]);
+            buffer.putByte(0, (byte)0b11);
+
+            wrapMethod.invoke(decoder, buffer, 0, 1, 0);
+            final Object flagsVersion0 = get(decoder, "flags");
+            assertEquals(true, get(flagsVersion0, "oldChoice"));
+            assertEquals(false, get(flagsVersion0, "newChoice"));
+
+            wrapMethod.invoke(decoder, buffer, 0, 1, 1);
+            final Object flagsVersion1 = get(decoder, "flags");
+            assertEquals(true, get(flagsVersion1, "oldChoice"));
+            assertEquals(true, get(flagsVersion1, "newChoice"));
+        }
+    }
+
+    @Test
     void shouldGenerateWithoutPrecedenceChecksByDefault() throws Exception
     {
         final PrecedenceChecks.Context context = new PrecedenceChecks.Context();
@@ -380,6 +442,30 @@ class JavaGeneratorTest
         assertFalse(getCruiseControl(extrasDecoder));
         setCruiseControl(extrasEncoder, true);
         assertTrue(getCruiseControl(extrasDecoder));
+    }
+
+    @Test
+    void shouldGenerateBitSetRawAccessor() throws Exception
+    {
+        final UnsafeBuffer buffer = new UnsafeBuffer(new byte[4096]);
+
+        generator().generate();
+
+        final Object encoder = wrap(buffer, compileCarEncoder().getConstructor().newInstance());
+        final Object decoder = getCarDecoder(buffer, encoder);
+
+        final Object extrasEncoder = getExtras(encoder);
+        final Object extrasDecoder = getExtras(decoder);
+
+        final Method getRawMethod = extrasDecoder.getClass().getMethod("getRaw");
+        final Class<?> rawType = getRawMethod.getReturnType();
+        final Method setRawMethod = extrasEncoder.getClass().getMethod("setRaw", rawType);
+
+        final Short boxedValue = (short)0b0000_0101;
+        setRawMethod.invoke(extrasEncoder, boxedValue);
+
+        final Object result = getRawMethod.invoke(extrasDecoder);
+        assertEquals(boxedValue, result);
     }
 
     @Test
